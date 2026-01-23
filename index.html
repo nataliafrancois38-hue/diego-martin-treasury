@@ -132,43 +132,71 @@
         function App() {
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
+            const [loadingMessage, setLoadingMessage] = useState('Connecting to database...');
             const [error, setError] = useState(null);
             const [supabaseClient, setSupabaseClient] = useState(null);
 
-            useEffect(() => {
-                const initApp = () => {
-                    try {
-                        if (!window.supabase) {
-                            setError('Supabase library not loaded');
-                            setLoading(false);
-                            return;
-                        }
-
-                        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                        setSupabaseClient(client);
-
-                        client.auth.getSession().then(({ data: { session }, error }) => {
-                            if (error) {
-                                console.error('Session error:', error);
-                            }
-                            setUser(session?.user ?? null);
-                            setLoading(false);
-                        });
-
-                        client.auth.onAuthStateChange((_event, session) => {
-                            setUser(session?.user ?? null);
-                        });
-                    } catch (e) {
-                        console.error('Init error:', e);
-                        setError(e.message);
+            const initApp = () => {
+                setLoading(true);
+                setError(null);
+                setLoadingMessage('Connecting to database...');
+                
+                try {
+                    if (!window.supabase) {
+                        setError('Supabase library not loaded. Please check your internet connection and refresh.');
                         setLoading(false);
+                        return;
                     }
-                };
 
+                    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    setSupabaseClient(client);
+
+                    // Add timeout for slow connections
+                    const timeout = setTimeout(() => {
+                        setLoadingMessage('Still connecting... This may take a moment on slower connections.');
+                    }, 5000);
+
+                    const errorTimeout = setTimeout(() => {
+                        setLoading(false);
+                        setError('Connection is taking too long. Please check your internet and try again.');
+                    }, 15000);
+
+                    client.auth.getSession().then(({ data: { session }, error }) => {
+                        clearTimeout(timeout);
+                        clearTimeout(errorTimeout);
+                        if (error) {
+                            console.error('Session error:', error);
+                        }
+                        setUser(session?.user ?? null);
+                        setLoading(false);
+                    }).catch(err => {
+                        clearTimeout(timeout);
+                        clearTimeout(errorTimeout);
+                        setError('Failed to connect. Please check your internet and try again.');
+                        setLoading(false);
+                    });
+
+                    client.auth.onAuthStateChange((_event, session) => {
+                        setUser(session?.user ?? null);
+                    });
+                } catch (e) {
+                    console.error('Init error:', e);
+                    setError(e.message);
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
                 if (window.SUPABASE_READY) {
                     initApp();
                 } else {
                     window.startApp = initApp;
+                    // Fallback if Supabase script loaded but flag not set
+                    setTimeout(() => {
+                        if (loading && !supabaseClient) {
+                            initApp();
+                        }
+                    }, 2000);
                 }
             }, []);
 
@@ -177,7 +205,10 @@
                     <div className="min-h-screen flex items-center justify-center">
                         <div className="text-center">
                             <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                            <p className="text-slate-400">Connecting to database...</p>
+                            <p className="text-slate-400 mb-4">{loadingMessage}</p>
+                            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600">
+                                Refresh Page
+                            </button>
                         </div>
                     </div>
                 );
@@ -187,9 +218,13 @@
                 return (
                     <div className="min-h-screen flex items-center justify-center p-4">
                         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 max-w-md text-center">
-                            <h1 className="text-xl font-bold text-red-400 mb-3">Error</h1>
+                            <h1 className="text-xl font-bold text-red-400 mb-3">Connection Error</h1>
                             <p className="text-slate-300 mb-4">{error}</p>
-                            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-amber-500 text-slate-900 rounded-lg font-semibold">Try Again</button>
+                            <div className="space-y-2">
+                                <button onClick={initApp} className="w-full px-4 py-2 bg-amber-500 text-slate-900 rounded-lg font-semibold">Try Again</button>
+                                <button onClick={() => window.location.reload()} className="w-full px-4 py-2 bg-slate-700 text-slate-300 rounded-lg">Refresh Page</button>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-4">If problem persists, try using a different browser or check your internet connection.</p>
                         </div>
                     </div>
                 );

@@ -3267,6 +3267,74 @@
                 }
             };
 
+            // Export Conference Funds Report
+            const exportConferenceFundsReport = () => {
+                try {
+                    const data = [
+                        ['CONFERENCE FUNDS REPORT'],
+                        [`Period: ${startDate} to ${endDate}`],
+                        [],
+                        ['CONFERENCE FUNDS BREAKDOWN'],
+                        ['Category', 'Amount'],
+                        ...CONFERENCE_FIELDS.map(f => [f.label, filteredTotals[f.key] || 0]),
+                        [],
+                        ['Sub Total Conference Funds', filteredTotals.totalConfFund],
+                        [],
+                        ['40% CALCULATION BREAKDOWN'],
+                        ['Budget Covenant', filteredTotals.budget_covenant || 0],
+                        ['Less: Contribution to School (Tithe)', -(filteredTotals.school || 0)],
+                        ["Less: Contribution to Children's Home", -(filteredTotals.pos_band || 0)],
+                        ['Less: School - Wesport (Expenses)', -(filteredTotals.wesportExpenses || 0)],
+                        ['Net Amount for 40%/60%', filteredTotals.baseFor40_60 || 0],
+                        [],
+                        ['40% of Net Amount', filteredTotals.percentage40],
+                        [],
+                        ['GRAND TOTAL TO CONFERENCE', filteredTotals.grandTotalConference],
+                    ];
+                    const ws = XLSX.utils.aoa_to_sheet(data);
+                    ws['!cols'] = [{wch: 40}, {wch: 15}];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Conference Funds');
+                    XLSX.writeFile(wb, `Conference_Funds_${startDate}_to_${endDate}.xlsx`);
+                } catch (err) {
+                    console.error('Export error:', err);
+                    alert('Export error: ' + err.message);
+                }
+            };
+
+            // Export Church Operating Income Report
+            const exportChurchOperatingReport = () => {
+                try {
+                    const data = [
+                        ['CHURCH OPERATING INCOME REPORT'],
+                        [`Period: ${startDate} to ${endDate}`],
+                        [],
+                        ['CHURCH FUNDS BREAKDOWN'],
+                        ['Category', 'Amount'],
+                        ...CHURCH_FIELDS.map(f => [f.label, filteredTotals[f.key] || 0]),
+                        [],
+                        ['Total Church Funds', filteredTotals.totalChurchFund],
+                        [],
+                        ['60% CALCULATION BREAKDOWN'],
+                        ['Budget Covenant', filteredTotals.budget_covenant || 0],
+                        ['Less: Contribution to School (Tithe)', -(filteredTotals.school || 0)],
+                        ["Less: Contribution to Children's Home", -(filteredTotals.pos_band || 0)],
+                        ['Less: School - Wesport (Expenses)', -(filteredTotals.wesportExpenses || 0)],
+                        ['Net Amount for 40%/60%', filteredTotals.baseFor40_60 || 0],
+                        [],
+                        ['60% CHURCH OPERATING INCOME', filteredTotals.churchOperating],
+                    ];
+                    const ws = XLSX.utils.aoa_to_sheet(data);
+                    ws['!cols'] = [{wch: 40}, {wch: 15}];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, 'Church Operating');
+                    XLSX.writeFile(wb, `Church_Operating_${startDate}_to_${endDate}.xlsx`);
+                } catch (err) {
+                    console.error('Export error:', err);
+                    alert('Export error: ' + err.message);
+                }
+            };
+
             const exportMemberReport = () => {
                 try {
                     const memberData = uniqueMembers.map(name => {
@@ -3460,6 +3528,8 @@
                                 <label className="text-xs text-slate-400 block mb-1">Report Type</label>
                                 <select value={reportType} onChange={e => setReportType(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm">
                                     <option value="summary">Summary</option>
+                                    <option value="conferenceFunds">Conference Funds</option>
+                                    <option value="churchOperating">Church Operating Income</option>
                                     <option value="tithes">Tithes Detail</option>
                                     <option value="members">By Member</option>
                                     <option value="expenses">Expenses</option>
@@ -3477,7 +3547,9 @@
                         <h3 className="text-sm font-semibold text-emerald-400 mb-3">Export Reports to Excel</h3>
                         <div className="flex flex-wrap gap-2">
                             <button onClick={exportTithesReport} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-500">📥 Treasurer Book</button>
-                            <button onClick={exportMemberReport} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500">📥 Member Summary</button>
+                            <button onClick={exportConferenceFundsReport} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-500">📥 Conference Funds</button>
+                            <button onClick={exportChurchOperatingReport} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500">📥 Church Operating</button>
+                            <button onClick={exportMemberReport} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-500">📥 Member Summary</button>
                             <button onClick={exportExpensesReport} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-500">📥 Expenses Report</button>
                             <button onClick={exportDepositsReport} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-500">📥 Deposits Report</button>
                             <button onClick={exportChequesReport} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-500">📥 Cheques Report</button>
@@ -3599,6 +3671,140 @@
                                         <span className="text-blue-400 font-medium">60% Church Operating</span>
                                         <span className="text-blue-400 font-medium">{fmtCur(filteredTotals.churchOperating)}</span>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Conference Funds Report */}
+                    {reportType === 'conferenceFunds' && (
+                        <div className="space-y-4">
+                            <div className="bg-slate-800/50 rounded-xl border border-teal-500/30 p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold text-teal-400">Conference Funds Report</h3>
+                                    <button onClick={exportConferenceFundsReport} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-500">📥 Export to Excel</button>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Conference Funds Breakdown */}
+                                    <div className="bg-slate-900/50 rounded-lg p-4">
+                                        <h4 className="text-sm font-semibold text-emerald-400 mb-3">Conference Funds Breakdown</h4>
+                                        {CONFERENCE_FIELDS.map(f => (
+                                            <div key={f.key} className="flex justify-between py-2 border-b border-slate-700/50">
+                                                <span className="text-slate-300">{f.label}</span>
+                                                <span className="text-emerald-400 font-medium">{fmtCur(filteredTotals[f.key] || 0)}</span>
+                                            </div>
+                                        ))}
+                                        <div className="flex justify-between py-3 font-bold border-t border-slate-600 mt-2">
+                                            <span className="text-emerald-300">Sub Total Conference Funds</span>
+                                            <span className="text-emerald-300">{fmtCur(filteredTotals.totalConfFund)}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* 40% Calculation */}
+                                    <div className="bg-slate-900/50 rounded-lg p-4">
+                                        <h4 className="text-sm font-semibold text-amber-400 mb-3">40% Calculation</h4>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-slate-300">Budget Covenant</span>
+                                            <span className="text-slate-300">{fmtCur(filteredTotals.budget_covenant || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-red-400">Less: Contribution to School (Tithe)</span>
+                                            <span className="text-red-400">-{fmtCur(filteredTotals.school || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-red-400">Less: Contribution to Children's Home</span>
+                                            <span className="text-red-400">-{fmtCur(filteredTotals.pos_band || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-red-400">Less: School - Wesport (Expenses)</span>
+                                            <span className="text-red-400">-{fmtCur(filteredTotals.wesportExpenses || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-t border-slate-600 mt-2">
+                                            <span className="text-slate-300 font-medium">Net Amount for 40%/60%</span>
+                                            <span className="text-slate-300 font-medium">{fmtCur(filteredTotals.baseFor40_60 || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-3 bg-amber-500/20 rounded-lg px-3 mt-2">
+                                            <span className="text-amber-400 font-bold">40% of Net Amount</span>
+                                            <span className="text-amber-400 font-bold">{fmtCur(filteredTotals.percentage40)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Grand Total */}
+                                <div className="mt-6 p-4 bg-teal-500/20 rounded-xl border border-teal-500/30">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xl font-bold text-teal-400">GRAND TOTAL TO CONFERENCE</span>
+                                        <span className="text-2xl font-bold text-teal-400">{fmtCur(filteredTotals.grandTotalConference)}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-2">Sub Total Conference Funds ({fmtCur(filteredTotals.totalConfFund)}) + 40% of Net Amount ({fmtCur(filteredTotals.percentage40)})</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Church Operating Income Report */}
+                    {reportType === 'churchOperating' && (
+                        <div className="space-y-4">
+                            <div className="bg-slate-800/50 rounded-xl border border-blue-500/30 p-6">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold text-blue-400">Church Operating Income Report</h3>
+                                    <button onClick={exportChurchOperatingReport} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500">📥 Export to Excel</button>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Church Funds Breakdown */}
+                                    <div className="bg-slate-900/50 rounded-lg p-4">
+                                        <h4 className="text-sm font-semibold text-blue-400 mb-3">Church Funds Breakdown</h4>
+                                        {CHURCH_FIELDS.map(f => (
+                                            <div key={f.key} className="flex justify-between py-2 border-b border-slate-700/50">
+                                                <span className="text-slate-300">{f.label}</span>
+                                                <span className="text-blue-400 font-medium">{fmtCur(filteredTotals[f.key] || 0)}</span>
+                                            </div>
+                                        ))}
+                                        <div className="flex justify-between py-3 font-bold border-t border-slate-600 mt-2">
+                                            <span className="text-blue-300">Total Church Funds</span>
+                                            <span className="text-blue-300">{fmtCur(filteredTotals.totalChurchFund)}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* 60% Calculation */}
+                                    <div className="bg-slate-900/50 rounded-lg p-4">
+                                        <h4 className="text-sm font-semibold text-cyan-400 mb-3">60% Calculation</h4>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-slate-300">Budget Covenant</span>
+                                            <span className="text-slate-300">{fmtCur(filteredTotals.budget_covenant || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-red-400">Less: Contribution to School (Tithe)</span>
+                                            <span className="text-red-400">-{fmtCur(filteredTotals.school || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-red-400">Less: Contribution to Children's Home</span>
+                                            <span className="text-red-400">-{fmtCur(filteredTotals.pos_band || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-700/50">
+                                            <span className="text-red-400">Less: School - Wesport (Expenses)</span>
+                                            <span className="text-red-400">-{fmtCur(filteredTotals.wesportExpenses || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-t border-slate-600 mt-2">
+                                            <span className="text-slate-300 font-medium">Net Amount for 40%/60%</span>
+                                            <span className="text-slate-300 font-medium">{fmtCur(filteredTotals.baseFor40_60 || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-3 bg-blue-500/20 rounded-lg px-3 mt-2">
+                                            <span className="text-blue-400 font-bold">60% of Net Amount</span>
+                                            <span className="text-blue-400 font-bold">{fmtCur(filteredTotals.churchOperating)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Church Operating Total */}
+                                <div className="mt-6 p-4 bg-blue-500/20 rounded-xl border border-blue-500/30">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xl font-bold text-blue-400">CHURCH OPERATING INCOME</span>
+                                        <span className="text-2xl font-bold text-blue-400">{fmtCur(filteredTotals.churchOperating)}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-2">This is the 60% of net amount available for church operations</p>
                                 </div>
                             </div>
                         </div>

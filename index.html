@@ -689,8 +689,8 @@
                                     </div>
                                     <div className="bg-gradient-to-br from-cyan-500/20 to-transparent rounded-xl border border-cyan-500/30 p-3">
                                         <p className="text-xs text-slate-400">Church Income</p>
-                                        <p className="text-lg font-bold text-cyan-400">{fmtCur((titheTotals.budget_covenant || 0) * 0.6)}</p>
-                                        <p className="text-xs text-slate-500">60% Budget Covenant</p>
+                                        <p className="text-lg font-bold text-cyan-400">{fmtCur(titheTotals.churchOperating)}</p>
+                                        <p className="text-xs text-slate-500">60% (BC - School - CH)</p>
                                     </div>
                                     <div className="bg-gradient-to-br from-emerald-500/20 to-transparent rounded-xl border border-emerald-500/30 p-3">
                                         <p className="text-xs text-slate-400">Conference Funds</p>
@@ -2338,9 +2338,11 @@
             };
             
             // Current year data (2026) from database
-            // Church keeps 60% of budget covenant - 40% goes to conference
+            // Church income = (Budget Covenant - School - Children's Home) * 60%
             const thisYearBudgetCovenant = getMonthlyData(titheEntries, currentYear, 'budget_covenant');
-            const thisYearIncome = thisYearBudgetCovenant.map(v => v * 0.6); // Church keeps 60%
+            const thisYearSchool = getMonthlyData(titheEntries, currentYear, 'school');
+            const thisYearChildrensHome = getMonthlyData(titheEntries, currentYear, 'pos_band');
+            const thisYearIncome = thisYearBudgetCovenant.map((v, i) => (v - (thisYearSchool[i] || 0) - (thisYearChildrensHome[i] || 0)) * 0.6);
             const thisYearTithe = getMonthlyData(titheEntries, currentYear, 'tithe');
             const thisYearExpenses = getMonthlyExpenses(currentYear);
             const thisYearDeposits = getMonthlyDeposits(currentYear);
@@ -2348,7 +2350,7 @@
             // 2025 Historical Data (hardcoded from financial statements)
             const lastYearTithe = Array(12).fill(0).map((_, i) => HISTORICAL_DATA_2025.tithe[i + 1] || 0);
             const lastYearBudgetCovenant = Array(12).fill(0).map((_, i) => HISTORICAL_DATA_2025.churchIncome[i + 1] || 0);
-            const lastYearIncome = lastYearBudgetCovenant.map(v => v * 0.6); // Church keeps 60%
+            const lastYearIncome = lastYearBudgetCovenant.map(v => v * 0.6); // Historical already adjusted
             const lastYearExpenses = Array(12).fill(0).map((_, i) => HISTORICAL_DATA_2025.expenses[i + 1] || 0);
             
             // YTD calculations (only count months up to current)
@@ -2389,11 +2391,14 @@
             const projectedYearEndTithe = getSeasonalProjection(ytdTitheTotal, lastYearTithe);
             const projectedNetPosition = projectedYearEndIncome - projectedYearEndExpenses;
             
-            // Conference fund projection (Tithe + 40% of church offerings)
+            // Conference fund projection (Tithe + 40% of (Budget Covenant - School - Children's Home))
             const ytdTithe = getMonthlyData(titheEntries, currentYear, 'tithe').slice(0, currentMonth + 1).reduce((s, v) => s + v, 0);
-            const ytdChurchFund = getMonthlyData(titheEntries, currentYear, 'total_church_fund').slice(0, currentMonth + 1).reduce((s, v) => s + v, 0);
-            const ytdConferenceFund = ytdTithe + (ytdChurchFund * 0.4);
-            const projectedConferenceFund = projectedYearEndTithe + (projectedYearEndIncome * 0.4);
+            const ytdBaseFor40 = thisYearBudgetCovenant.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0) 
+                - thisYearSchool.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0)
+                - thisYearChildrensHome.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0);
+            const ytdConferenceFund = ytdTithe + (ytdBaseFor40 * 0.4);
+            // For projection: if churchOperating = base * 0.6, then 40% = churchOperating * (0.4/0.6)
+            const projectedConferenceFund = projectedYearEndTithe + (projectedYearEndIncome * (0.4 / 0.6));
             
             // Trend calculations (YoY change vs 2025)
             const incomeChangePercent = lastYearSamePeriodIncome > 0 ? ((ytdIncome - lastYearSamePeriodIncome) / lastYearSamePeriodIncome * 100) : 0;
@@ -3185,10 +3190,10 @@
                         filteredTotals.totalChurchFund
                     ];
                     
-                    // Conference fund calculations
+                    // Conference fund calculations (40% is on Budget Covenant minus School and Children's Home)
                     const subTotalConfFunds = filteredTotals.totalConfFund;
-                    const percentage40 = filteredTotals.totalChurchFund * 0.4;
-                    const grandTotalConference = subTotalConfFunds + percentage40;
+                    const percentage40 = filteredTotals.percentage40; // Already calculated correctly
+                    const grandTotalConference = filteredTotals.grandTotalConference;
                     
                     // Empty row for spacing
                     const emptyRow = Array(21).fill('');
@@ -4005,8 +4010,10 @@
             });
             totals.totalConfFund = CONFERENCE_FIELDS.reduce((s, f) => s + totals[f.key], 0);
             totals.totalChurchFund = CHURCH_FIELDS.reduce((s, f) => s + totals[f.key], 0);
-            totals.percentage40 = totals.totalChurchFund * 0.4;
-            totals.churchOperating = totals.totalChurchFund * 0.6;
+            // 40%/60% is calculated on Budget Covenant MINUS School and Children's Home
+            const baseFor40_60 = (totals.budget_covenant || 0) - (totals.school || 0) - (totals.pos_band || 0);
+            totals.percentage40 = baseFor40_60 * 0.4;
+            totals.churchOperating = baseFor40_60 * 0.6;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;
             return totals;
         }

@@ -84,7 +84,7 @@
             { key: 'tithe', label: "Tithes" },
             { key: 'special_offering', label: 'Special Offering' },
             { key: 'ingathering', label: 'Ingathering' },
-            { key: 'radio', label: 'Radio' },
+            { key: 'radio', label: '3ABN/Radio' },
             { key: 'nehemiah', label: 'Nehemiah' },
         ];
 
@@ -98,6 +98,7 @@
             { key: 'raffa_house', label: 'Choir' },
             { key: 'tv', label: 'Other' },
             { key: 'government_fund', label: 'Church Project' },
+            { key: 'messages_of_hope', label: 'Messages of Hope Radio' },
         ];
 
         const EXPENSE_CATEGORIES = [
@@ -444,7 +445,7 @@
             const saveTitheEntry = async (entry) => {
                 try {
                     // Convert empty strings to 0 for numeric fields
-                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
+                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'messages_of_hope', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
                     const cleanedEntry = { ...entry };
                     numericFields.forEach(field => {
                         if (cleanedEntry[field] === '' || cleanedEntry[field] === null || cleanedEntry[field] === undefined) {
@@ -773,7 +774,7 @@
                                                             { label: 'Tithe', value: titheTotals.tithe || 0, color: 'bg-emerald-500' },
                                                             { label: 'Special Offering', value: titheTotals.special_offering || 0, color: 'bg-blue-500' },
                                                             { label: 'Ingathering', value: titheTotals.ingathering || 0, color: 'bg-purple-500' },
-                                                            { label: 'Radio', value: titheTotals.radio || 0, color: 'bg-pink-500' },
+                                                            { label: '3ABN/Radio', value: titheTotals.radio || 0, color: 'bg-pink-500' },
                                                             { label: '40% Church Offering', value: titheTotals.percentage40 || 0, color: 'bg-amber-500' },
                                                         ];
                                                         const maxConf = Math.max(...confItems.map(i => i.value), 1);
@@ -1178,7 +1179,7 @@
             const today = new Date().toISOString().split('T')[0];
             const initialSlip = initialData ? initialData.slip_number : getNextSlipForDate(today);
             
-            const [form, setForm] = useState(initialData || { date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', project_id: '' });
+            const [form, setForm] = useState(initialData || { date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', project_id: '' });
             const [saving, setSaving] = useState(false);
             const [showNameSuggestions, setShowNameSuggestions] = useState(false);
             
@@ -3134,8 +3135,8 @@
                     // Match the exact format from treasurer_book_dec.xlsx
                     const headers = [
                         'Date', 'Slip #', 'Name', "Total Rec'd", 
-                        'Tithe', 'Special Offering', 'Ingathering', 'Radio', 'Nehemiah', 'Total Conf Fund',
-                        'Budget Covenant', 'Welfare', 'Church Building Fund', 'School', "Children's Home", 'Refunds', 'Choir', 'Other', 'Church Project', 'Total Church Funds'
+                        'Tithe', 'Special Offering', 'Ingathering', '3ABN/Radio', 'Nehemiah', 'Total Conf Fund',
+                        'Budget Covenant', 'Welfare', 'Church Building Fund', 'School', "Children's Home", 'Refunds', 'Choir', 'Other', 'Church Project', 'Messages of Hope', 'Total Church Funds'
                     ];
                     const data = filteredTithes.map(e => [
                         e.date, 
@@ -3157,6 +3158,7 @@
                         parseFloat(e.raffa_house) || '',
                         parseFloat(e.tv) || '',
                         parseFloat(e.government_fund) || '',
+                        parseFloat(e.messages_of_hope) || '',
                         parseFloat(e.total_church_fund) || 0
                     ]);
                     
@@ -3179,6 +3181,7 @@
                         filteredTotals.raffa_house || 0,
                         filteredTotals.tv || 0,
                         filteredTotals.government_fund || 0,
+                        filteredTotals.messages_of_hope || 0,
                         filteredTotals.totalChurchFund
                     ];
                     
@@ -3188,12 +3191,12 @@
                     const grandTotalConference = subTotalConfFunds + percentage40;
                     
                     // Empty row for spacing
-                    const emptyRow = Array(20).fill('');
+                    const emptyRow = Array(21).fill('');
                     
                     // Conference summary rows
-                    const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', ''];
-                    const percentage40Row = ['', '', 'Percentage to Local Offering (40%)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', ''];
-                    const grandTotalRow = ['', '', 'Grand Total To Conference Treasurer', '', '', '', '', '', '', grandTotalConference, '', '', '', '', '', '', '', '', '', ''];
+                    const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', '', ''];
+                    const percentage40Row = ['', '', 'Percentage to Local Offering (40%)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', '', ''];
+                    const grandTotalRow = ['', '', 'Grand Total To Conference Treasurer', '', '', '', '', '', '', grandTotalConference, '', '', '', '', '', '', '', '', '', '', ''];
                     
                     const ws = XLSX.utils.aoa_to_sheet([
                         headers, 
@@ -3208,8 +3211,8 @@
                     // Set column widths
                     ws['!cols'] = [
                         {wch: 12}, {wch: 6}, {wch: 30}, {wch: 12},
-                        {wch: 10}, {wch: 15}, {wch: 12}, {wch: 8}, {wch: 14},
-                        {wch: 15}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 16}, {wch: 8}, {wch: 10}, {wch: 14}, {wch: 16}
+                        {wch: 10}, {wch: 15}, {wch: 12}, {wch: 12}, {wch: 10},
+                        {wch: 15}, {wch: 15}, {wch: 10}, {wch: 18}, {wch: 10}, {wch: 14}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 14}, {wch: 16}, {wch: 16}
                     ];
                     
                     const wb = XLSX.utils.book_new();

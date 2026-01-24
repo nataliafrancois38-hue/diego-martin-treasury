@@ -1588,14 +1588,23 @@
                     ['CONFERENCE FUNDS', 'THIS MONTH', 'TOTAL TO DATE'],
                     ...CONFERENCE_FIELDS.map(f => [f.label, thisMonthTotals[f.key], allTimeTotals[f.key]]),
                     ['Sub Total Conference Funds', thisMonthTotals.totalConfFund, allTimeTotals.totalConfFund],
-                    ['40% of Church Offering', thisMonthTotals.percentage40, allTimeTotals.percentage40],
+                    [],
+                    ['40% CALCULATION BREAKDOWN'],
+                    ['Budget Covenant', thisMonthTotals.budget_covenant, allTimeTotals.budget_covenant],
+                    ['Less: Contribution to School', -(thisMonthTotals.school || 0), -(allTimeTotals.school || 0)],
+                    ["Less: Contribution to Children's Home", -(thisMonthTotals.pos_band || 0), -(allTimeTotals.pos_band || 0)],
+                    ['Net Amount for 40%/60%', (thisMonthTotals.budget_covenant || 0) - (thisMonthTotals.school || 0) - (thisMonthTotals.pos_band || 0), (allTimeTotals.budget_covenant || 0) - (allTimeTotals.school || 0) - (allTimeTotals.pos_band || 0)],
+                    ['40% of Net Amount', thisMonthTotals.percentage40, allTimeTotals.percentage40],
+                    [],
                     ['Total Conference Funds', thisMonthTotals.grandTotalConference, allTimeTotals.grandTotalConference],
                     [],
                     ['CHURCH FUNDS'],
                     ...CHURCH_FIELDS.map(f => [f.label, thisMonthTotals[f.key], allTimeTotals[f.key]]),
                     ['TOTAL CHURCH INCOME', thisMonthTotals.totalChurchFund, allTimeTotals.totalChurchFund],
-                    ['Less 40%', thisMonthTotals.percentage40, allTimeTotals.percentage40],
-                    ['CHURCH OPERATING INCOME', thisMonthTotals.churchOperating, allTimeTotals.churchOperating],
+                    [],
+                    ['60% CALCULATION'],
+                    ['Net Amount for 40%/60%', (thisMonthTotals.budget_covenant || 0) - (thisMonthTotals.school || 0) - (thisMonthTotals.pos_band || 0), (allTimeTotals.budget_covenant || 0) - (allTimeTotals.school || 0) - (allTimeTotals.pos_band || 0)],
+                    ['60% CHURCH OPERATING INCOME', thisMonthTotals.churchOperating, allTimeTotals.churchOperating],
                     [],
                     ['EXPENDITURE', 'THIS MONTH', 'TOTAL'],
                     ...EXPENSE_CATEGORIES.map(cat => {
@@ -1700,8 +1709,15 @@
                                             </tr>
                                         ))}
                                         <tr className="font-bold"><td className="text-slate-300 py-1">Total Church Income</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.totalChurchFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalChurchFund)}</td></tr>
-                                        <tr><td className="text-slate-400 py-1">Less 40% to Conference</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-slate-400">-{fmtCur(allTimeTotals.percentage40)}</td></tr>
-                                        <tr className="font-bold bg-blue-500/10"><td className="text-blue-400 py-2">CHURCH OPERATING</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.churchOperating)}</td><td className="text-right text-blue-300">{fmtCur(allTimeTotals.churchOperating)}</td></tr>
+                                        
+                                        {/* 40%/60% Breakdown */}
+                                        <tr className="bg-slate-700/30"><td colSpan="3" className="text-xs text-amber-400 py-2 font-semibold">40%/60% CALCULATION</td></tr>
+                                        <tr><td className="text-slate-400 py-1 pl-4">Budget Covenant</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.budget_covenant)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.budget_covenant)}</td></tr>
+                                        <tr><td className="text-red-400 py-1 pl-4">Less: Contribution to School</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.school)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.school)}</td></tr>
+                                        <tr><td className="text-red-400 py-1 pl-4">Less: Contribution to Children's Home</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.pos_band)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.pos_band)}</td></tr>
+                                        <tr className="border-t border-slate-600"><td className="text-slate-300 py-1 pl-4 font-medium">Net Amount for 40%/60%</td><td className="text-right text-slate-300">{fmtCur((thisMonthTotals.budget_covenant || 0) - (thisMonthTotals.school || 0) - (thisMonthTotals.pos_band || 0))}</td><td className="text-right text-slate-400">{fmtCur((allTimeTotals.budget_covenant || 0) - (allTimeTotals.school || 0) - (allTimeTotals.pos_band || 0))}</td></tr>
+                                        <tr><td className="text-amber-400 py-1 pl-4">40% to Conference</td><td className="text-right text-amber-400">{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-amber-300">{fmtCur(allTimeTotals.percentage40)}</td></tr>
+                                        <tr className="font-bold bg-blue-500/10"><td className="text-blue-400 py-2 pl-4">60% CHURCH OPERATING</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.churchOperating)}</td><td className="text-right text-blue-300">{fmtCur(allTimeTotals.churchOperating)}</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -3192,15 +3208,22 @@
                     
                     // Conference fund calculations (40% is on Budget Covenant minus School and Children's Home)
                     const subTotalConfFunds = filteredTotals.totalConfFund;
-                    const percentage40 = filteredTotals.percentage40; // Already calculated correctly
+                    const netFor40_60 = (filteredTotals.budget_covenant || 0) - (filteredTotals.school || 0) - (filteredTotals.pos_band || 0);
+                    const percentage40 = filteredTotals.percentage40;
                     const grandTotalConference = filteredTotals.grandTotalConference;
                     
                     // Empty row for spacing
                     const emptyRow = Array(21).fill('');
                     
-                    // Conference summary rows
+                    // Conference summary rows with 40%/60% breakdown
                     const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', '', ''];
-                    const percentage40Row = ['', '', 'Percentage to Local Offering (40%)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', '', ''];
+                    const breakdownHeaderRow = ['', '', '40% Calculation Breakdown:', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+                    const budgetCovenantRow = ['', '', '  Budget Covenant', '', '', '', '', '', '', '', filteredTotals.budget_covenant || 0, '', '', '', '', '', '', '', '', '', ''];
+                    const lessSchoolRow = ['', '', '  Less: Contribution to School', '', '', '', '', '', '', '', -(filteredTotals.school || 0), '', '', '', '', '', '', '', '', '', ''];
+                    const lessChildrensHomeRow = ['', '', "  Less: Contribution to Children's Home", '', '', '', '', '', '', '', -(filteredTotals.pos_band || 0), '', '', '', '', '', '', '', '', '', ''];
+                    const netAmountRow = ['', '', '  Net Amount for 40%/60%', '', '', '', '', '', '', '', netFor40_60, '', '', '', '', '', '', '', '', '', ''];
+                    const percentage40Row = ['', '', '40% of Net Amount (to Conference)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', '', ''];
+                    const percentage60Row = ['', '', '60% Church Operating Income', '', '', '', '', '', '', '', filteredTotals.churchOperating, '', '', '', '', '', '', '', '', '', ''];
                     const grandTotalRow = ['', '', 'Grand Total To Conference Treasurer', '', '', '', '', '', '', grandTotalConference, '', '', '', '', '', '', '', '', '', '', ''];
                     
                     const ws = XLSX.utils.aoa_to_sheet([
@@ -3209,7 +3232,15 @@
                         totalsRow,
                         emptyRow,
                         subTotalRow,
+                        emptyRow,
+                        breakdownHeaderRow,
+                        budgetCovenantRow,
+                        lessSchoolRow,
+                        lessChildrensHomeRow,
+                        netAmountRow,
                         percentage40Row,
+                        percentage60Row,
+                        emptyRow,
                         grandTotalRow
                     ]);
                     
@@ -3482,11 +3513,37 @@
                                         <span className="text-emerald-400">{fmtCur(filteredTotals[f.key])}</span>
                                     </div>
                                 ))}
-                                <div className="flex justify-between py-1 border-b border-slate-700/50 text-sm">
-                                    <span className="text-slate-400">+ 40% of Church Funds</span>
-                                    <span className="text-emerald-400">{fmtCur(filteredTotals.percentage40)}</span>
+                                <div className="flex justify-between py-1 font-medium">
+                                    <span className="text-emerald-300">Sub-Total Conference Funds</span>
+                                    <span className="text-emerald-300">{fmtCur(filteredTotals.totalConfFund)}</span>
                                 </div>
-                                <div className="flex justify-between py-2 font-bold">
+                                
+                                {/* 40% Calculation Breakdown */}
+                                <div className="mt-3 pt-2 border-t border-slate-600">
+                                    <p className="text-xs text-amber-400 font-semibold mb-1">40% Calculation:</p>
+                                    <div className="flex justify-between py-0.5 text-xs">
+                                        <span className="text-slate-400 pl-2">Budget Covenant</span>
+                                        <span className="text-slate-300">{fmtCur(filteredTotals.budget_covenant)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-xs">
+                                        <span className="text-red-400 pl-2">Less: Contribution to School</span>
+                                        <span className="text-red-400">-{fmtCur(filteredTotals.school)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-xs">
+                                        <span className="text-red-400 pl-2">Less: Contribution to Children's Home</span>
+                                        <span className="text-red-400">-{fmtCur(filteredTotals.pos_band)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-xs border-t border-slate-700 mt-1">
+                                        <span className="text-slate-300 pl-2">Net Amount</span>
+                                        <span className="text-slate-300">{fmtCur((filteredTotals.budget_covenant || 0) - (filteredTotals.school || 0) - (filteredTotals.pos_band || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-sm">
+                                        <span className="text-amber-400 pl-2">40% of Net Amount</span>
+                                        <span className="text-amber-400">{fmtCur(filteredTotals.percentage40)}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex justify-between py-2 font-bold mt-2 bg-emerald-500/10 px-2 rounded">
                                     <span className="text-emerald-400">Total to Conference</span>
                                     <span className="text-emerald-400">{fmtCur(filteredTotals.grandTotalConference)}</span>
                                 </div>
@@ -3503,9 +3560,30 @@
                                     <span className="text-blue-400">Total Church Funds</span>
                                     <span className="text-blue-400">{fmtCur(filteredTotals.totalChurchFund)}</span>
                                 </div>
-                                <div className="flex justify-between py-1 text-sm">
-                                    <span className="text-slate-400">Church Operating (60%)</span>
-                                    <span className="text-blue-300">{fmtCur(filteredTotals.churchOperating)}</span>
+                                
+                                {/* 60% Calculation Breakdown */}
+                                <div className="mt-3 pt-2 border-t border-slate-600">
+                                    <p className="text-xs text-cyan-400 font-semibold mb-1">60% Church Operating Calculation:</p>
+                                    <div className="flex justify-between py-0.5 text-xs">
+                                        <span className="text-slate-400 pl-2">Budget Covenant</span>
+                                        <span className="text-slate-300">{fmtCur(filteredTotals.budget_covenant)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-xs">
+                                        <span className="text-red-400 pl-2">Less: Contribution to School</span>
+                                        <span className="text-red-400">-{fmtCur(filteredTotals.school)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-xs">
+                                        <span className="text-red-400 pl-2">Less: Contribution to Children's Home</span>
+                                        <span className="text-red-400">-{fmtCur(filteredTotals.pos_band)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5 text-xs border-t border-slate-700 mt-1">
+                                        <span className="text-slate-300 pl-2">Net Amount</span>
+                                        <span className="text-slate-300">{fmtCur((filteredTotals.budget_covenant || 0) - (filteredTotals.school || 0) - (filteredTotals.pos_band || 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 text-sm bg-blue-500/10 px-2 rounded mt-1">
+                                        <span className="text-blue-400 font-medium">60% Church Operating</span>
+                                        <span className="text-blue-400 font-medium">{fmtCur(filteredTotals.churchOperating)}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>

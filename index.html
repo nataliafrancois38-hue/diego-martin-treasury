@@ -1081,18 +1081,25 @@
                             <ProjectForm 
                                 onSubmit={async (project) => {
                                     try {
-                                        const data = { ...project, created_by: user.id, created_by_email: user.email };
+                                        const data = { 
+                                            ...project, 
+                                            target_amount: project.target_amount === '' ? null : parseFloat(project.target_amount) || null,
+                                            opening_balance: project.opening_balance === '' ? 0 : parseFloat(project.opening_balance) || 0,
+                                            created_by: user.id, 
+                                            created_by_email: user.email 
+                                        };
                                         if (project.id) {
                                             await supabase.from('projects').update(data).eq('id', project.id);
                                         } else {
                                             delete data.id;
-                                            await supabase.from('projects').insert(data);
+                                            const { error } = await supabase.from('projects').insert(data);
+                                            if (error) throw error;
                                         }
                                         loadData();
                                         setEditingItem(null);
                                         setView('projects');
                                     } catch (err) {
-                                        alert('Error: ' + err.message);
+                                        alert('Error saving project: ' + err.message);
                                     }
                                 }}
                                 onCancel={() => { setEditingItem(null); setView('projects'); }}
@@ -1367,9 +1374,23 @@
                             <div><label className="text-xs text-slate-400">Voucher #</label><input type="number" value={form.voucher_number} onChange={e => handleChange('voucher_number', e.target.value)} className={inputCls} /></div>
                         </div>
                         <div><label className="text-xs text-slate-400">Category</label>
-                            <select value={form.category} onChange={e => { handleChange('category', e.target.value); handleChange('description', e.target.value); }} className={inputCls}>
+                            <select value={form.category} onChange={e => { 
+                                handleChange('category', e.target.value); 
+                                handleChange('description', e.target.value);
+                                // Auto-link to project if project category selected
+                                const selectedProject = activeProjects.find(p => p.name === e.target.value);
+                                if (selectedProject) {
+                                    handleChange('project_id', selectedProject.id);
+                                }
+                            }} className={inputCls}>
                                 <option value="">Select...</option>
                                 {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                {activeProjects.length > 0 && (
+                                    <>
+                                        <option disabled>──── Projects ────</option>
+                                        {activeProjects.map(p => <option key={`proj-${p.id}`} value={p.name}>📋 {p.name}</option>)}
+                                    </>
+                                )}
                             </select>
                         </div>
                         <div><label className="text-xs text-slate-400">Description</label><input type="text" value={form.description} onChange={e => handleChange('description', e.target.value)} className={inputCls} required /></div>

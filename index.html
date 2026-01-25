@@ -3646,10 +3646,11 @@
                     const memberData = uniqueMembers.map(name => {
                         const memberEntries = filteredTithes.filter(e => e.name === name);
                         const memberTotals = calculateTitheTotals(memberEntries);
-                        return [name, memberEntries.length, memberTotals.tithe || 0, memberTotals.totalReceived, memberTotals.totalConfFund, memberTotals.totalChurchFund];
+                        return [name, memberEntries.length, memberTotals.tithe || 0, memberTotals.budget_covenant || 0, memberTotals.totalReceived, memberTotals.totalConfFund, memberTotals.totalChurchFund];
                     });
-                    const headers = ['Member Name', 'Entries', 'Total Tithe', 'Total Received', 'Conf Fund', 'Church Fund'];
+                    const headers = ['Member Name', 'Entries', 'Total Tithe', 'Budget Covenant', 'Total Received', 'Conf Fund', 'Church Fund'];
                     const ws = XLSX.utils.aoa_to_sheet([headers, ...memberData]);
+                    ws['!cols'] = [{wch: 25}, {wch: 10}, {wch: 15}, {wch: 18}, {wch: 15}, {wch: 12}, {wch: 12}];
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, 'Member Report');
                     XLSX.writeFile(wb, `Member_Report_${startDate}_to_${endDate}.xlsx`);
@@ -3890,6 +3891,7 @@
                                     <option value="summary">Summary</option>
                                     <option value="conferenceFunds">Conference Funds</option>
                                     <option value="churchOperating">Church Operating Income</option>
+                                    <option value="fundDistribution">Fund Distribution</option>
                                     <option value="tithes">Tithes Detail</option>
                                     <option value="members">By Member</option>
                                     <option value="expenses">Expenses</option>
@@ -3918,7 +3920,7 @@
                     </div>
 
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                         <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/30">
                             <p className="text-xs text-slate-400">Total Received</p>
                             <p className="text-xl font-bold text-amber-400">{fmtCur(filteredTotals.totalReceived)}</p>
@@ -3928,6 +3930,11 @@
                             <p className="text-xs text-slate-400">Conference Funds</p>
                             <p className="text-xl font-bold text-emerald-400">{fmtCur(filteredTotals.grandTotalConference)}</p>
                             <p className="text-xs text-slate-500">Tithe + 40%</p>
+                        </div>
+                        <div className="p-4 bg-cyan-500/10 rounded-xl border border-cyan-500/30">
+                            <p className="text-xs text-slate-400">Church Operating</p>
+                            <p className="text-xl font-bold text-cyan-400">{fmtCur(filteredTotals.churchOperating)}</p>
+                            <p className="text-xs text-slate-500">60% Budget Covenant</p>
                         </div>
                         <div className="p-4 bg-red-500/10 rounded-xl border border-red-500/30">
                             <p className="text-xs text-slate-400">Expenses</p>
@@ -4170,6 +4177,166 @@
                         </div>
                     )}
 
+                    {/* Fund Distribution Report */}
+                    {reportType === 'fundDistribution' && (() => {
+                        // Calculate all project balances
+                        const allProjects = projects || [];
+                        const projectFunds = allProjects.map(p => ({
+                            name: p.name,
+                            status: p.status,
+                            balance: getProjectFinancials(p.id).balance
+                        }));
+                        const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
+                        
+                        // Church Operating Income (60%)
+                        const churchOperatingIncome = filteredTotals.churchOperating;
+                        
+                        // Total Funds (Projects + Church Operating)
+                        const totalFunds = totalProjectFunds + churchOperatingIncome;
+                        
+                        // Calculate Chequing Account Balance
+                        // Total Deposits - Total Expenses (all time for accurate balance)
+                        const totalDeposits = deposits.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
+                        const totalExpensesAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const chequingBalance = totalDeposits - totalExpensesAll;
+                        
+                        // Church Reserves = Chequing Balance - Total Funds
+                        const churchReserves = chequingBalance - totalFunds;
+                        
+                        // Right side total (should equal chequing balance)
+                        const rightSideTotal = totalFunds + churchReserves;
+                        
+                        return (
+                            <div className="space-y-4">
+                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="text-lg font-bold text-purple-400">Fund Distribution Report</h3>
+                                        <button onClick={() => {
+                                            const data = [
+                                                ['FUND DISTRIBUTION REPORT'],
+                                                [`As at: ${new Date().toLocaleDateString()}`],
+                                                [],
+                                                ['FUNDS', '', 'CHEQUING ACCOUNT'],
+                                                [],
+                                                ['PROJECT FUNDS', '', 'Account Balance'],
+                                                ...projectFunds.map(p => [p.name, p.balance, '']),
+                                                ['Total Project Funds', totalProjectFunds, ''],
+                                                [],
+                                                ['Church Operating Income (60%)', churchOperatingIncome, ''],
+                                                [],
+                                                ['TOTAL FUNDS', totalFunds, ''],
+                                                [],
+                                                ['Church Reserves', churchReserves, 'Chequing Balance'],
+                                                [],
+                                                ['BALANCE', totalFunds + churchReserves, chequingBalance]
+                                            ];
+                                            const ws = XLSX.utils.aoa_to_sheet(data);
+                                            ws['!cols'] = [{wch: 35}, {wch: 18}, {wch: 18}];
+                                            const wb = XLSX.utils.book_new();
+                                            XLSX.utils.book_append_sheet(wb, ws, 'Fund Distribution');
+                                            XLSX.writeFile(wb, `Fund_Distribution_${new Date().toISOString().split('T')[0]}.xlsx`);
+                                        }} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-500">📥 Export to Excel</button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Left Side - Funds */}
+                                        <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+                                            <h4 className="text-sm font-semibold text-emerald-400 mb-4 pb-2 border-b border-slate-600">FUNDS</h4>
+                                            
+                                            {/* Project Funds */}
+                                            <div className="mb-4">
+                                                <p className="text-xs text-slate-500 font-medium mb-2">PROJECT FUNDS</p>
+                                                {projectFunds.map((p, idx) => (
+                                                    <div key={idx} className="flex justify-between py-1.5 border-b border-slate-700/50">
+                                                        <span className="text-slate-300 text-sm">{p.name}</span>
+                                                        <span className={`text-sm font-medium ${p.balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtCur(p.balance)}</span>
+                                                    </div>
+                                                ))}
+                                                <div className="flex justify-between py-2 mt-1 bg-emerald-500/10 rounded px-2">
+                                                    <span className="text-emerald-400 font-medium text-sm">Total Project Funds</span>
+                                                    <span className="text-emerald-400 font-bold">{fmtCur(totalProjectFunds)}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Church Operating */}
+                                            <div className="mb-4">
+                                                <div className="flex justify-between py-2 border-b border-slate-600">
+                                                    <span className="text-cyan-400 text-sm">Church Operating Income (60%)</span>
+                                                    <span className="text-cyan-400 font-medium">{fmtCur(churchOperatingIncome)}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Total Funds */}
+                                            <div className="flex justify-between py-3 bg-purple-500/20 rounded-lg px-3 mt-4">
+                                                <span className="text-purple-400 font-bold">TOTAL FUNDS</span>
+                                                <span className="text-purple-400 font-bold text-lg">{fmtCur(totalFunds)}</span>
+                                            </div>
+                                            
+                                            {/* Church Reserves */}
+                                            <div className="mt-4 pt-4 border-t border-slate-600">
+                                                <div className="flex justify-between py-2">
+                                                    <span className="text-amber-400 text-sm">Church Reserves</span>
+                                                    <span className={`font-medium ${churchReserves >= 0 ? 'text-amber-400' : 'text-red-400'}`}>{fmtCur(churchReserves)}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Balance */}
+                                            <div className="flex justify-between py-3 bg-blue-500/20 rounded-lg px-3 mt-4 border-2 border-blue-500/50">
+                                                <span className="text-blue-400 font-bold">BALANCE</span>
+                                                <span className="text-blue-400 font-bold text-lg">{fmtCur(rightSideTotal)}</span>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Right Side - Chequing Account */}
+                                        <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+                                            <h4 className="text-sm font-semibold text-blue-400 mb-4 pb-2 border-b border-slate-600">CHEQUING ACCOUNT</h4>
+                                            
+                                            <div className="space-y-4">
+                                                <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
+                                                    <p className="text-xs text-slate-400 mb-1">Total Deposits</p>
+                                                    <p className="text-xl font-bold text-emerald-400">{fmtCur(totalDeposits)}</p>
+                                                </div>
+                                                
+                                                <div className="p-4 bg-red-500/10 rounded-lg border border-red-500/30">
+                                                    <p className="text-xs text-slate-400 mb-1">Total Expenses</p>
+                                                    <p className="text-xl font-bold text-red-400">-{fmtCur(totalExpensesAll)}</p>
+                                                </div>
+                                                
+                                                <div className="h-px bg-slate-600 my-4"></div>
+                                                
+                                                <div className="flex justify-between py-3 bg-blue-500/20 rounded-lg px-3 border-2 border-blue-500/50">
+                                                    <span className="text-blue-400 font-bold">CHEQUING BALANCE</span>
+                                                    <span className="text-blue-400 font-bold text-lg">{fmtCur(chequingBalance)}</span>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Verification */}
+                                            <div className="mt-6 p-4 bg-slate-800 rounded-lg border border-slate-600">
+                                                <p className="text-xs text-slate-400 mb-2">Verification</p>
+                                                <div className="flex justify-between py-1 text-sm">
+                                                    <span className="text-slate-300">Total Funds</span>
+                                                    <span className="text-slate-300">{fmtCur(totalFunds)}</span>
+                                                </div>
+                                                <div className="flex justify-between py-1 text-sm">
+                                                    <span className="text-slate-300">+ Church Reserves</span>
+                                                    <span className="text-slate-300">{fmtCur(churchReserves)}</span>
+                                                </div>
+                                                <div className="flex justify-between py-2 border-t border-slate-600 mt-2 font-bold">
+                                                    <span className={rightSideTotal === chequingBalance ? 'text-emerald-400' : 'text-red-400'}>
+                                                        {rightSideTotal === chequingBalance ? '✓ Balanced' : '✗ Unbalanced'}
+                                                    </span>
+                                                    <span className={rightSideTotal === chequingBalance ? 'text-emerald-400' : 'text-red-400'}>
+                                                        {fmtCur(rightSideTotal)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {/* Tithes Detail Report */}
                     {reportType === 'tithes' && (
                         <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
@@ -4225,6 +4392,7 @@
                                             <th className="px-3 py-2 text-left text-blue-400">Member Name</th>
                                             <th className="px-3 py-2 text-center text-blue-400">Entries</th>
                                             <th className="px-3 py-2 text-right text-blue-400">Tithe</th>
+                                            <th className="px-3 py-2 text-right text-blue-400">Budget Covenant</th>
                                             <th className="px-3 py-2 text-right text-blue-400">Total Given</th>
                                         </tr></thead>
                                         <tbody>
@@ -4237,6 +4405,7 @@
                                                         <td className="px-3 py-2 text-blue-400 hover:text-blue-300 underline">{name}</td>
                                                         <td className="px-3 py-2 text-center text-slate-400">{memberEntries.length}</td>
                                                         <td className="px-3 py-2 text-right text-emerald-400">{fmtCur(memberTotals.tithe)}</td>
+                                                        <td className="px-3 py-2 text-right text-cyan-400">{fmtCur(memberTotals.budget_covenant)}</td>
                                                         <td className="px-3 py-2 text-right text-amber-400 font-semibold">{fmtCur(memberTotals.totalReceived)}</td>
                                                     </tr>
                                                 );
@@ -4246,6 +4415,7 @@
                                             <td className="px-3 py-2 text-blue-400">TOTALS</td>
                                             <td className="px-3 py-2 text-center text-blue-400">{filteredTithes.length}</td>
                                             <td className="px-3 py-2 text-right text-emerald-400">{fmtCur(filteredTotals.tithe)}</td>
+                                            <td className="px-3 py-2 text-right text-cyan-400">{fmtCur(filteredTotals.budget_covenant)}</td>
                                             <td className="px-3 py-2 text-right text-amber-400">{fmtCur(filteredTotals.totalReceived)}</td>
                                         </tr></tfoot>
                                     </table>

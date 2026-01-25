@@ -96,12 +96,12 @@
             { key: 'budget_covenant', label: 'Budget Covenant/Offerings' },
             { key: 'sabbath_school', label: 'Sabbath School' },
             { key: 'welfare', label: 'Welfare' },
-            { key: 'pos_band', label: "Children's Home" },
-            { key: 'school', label: 'Contributions to School' },
             { key: 'project', label: 'Church Building Fund' },
+            { key: 'school', label: 'Contributions to School' },
+            { key: 'pos_band', label: "Children's Home" },
             { key: 'books', label: 'Refunds' },
             { key: 'raffa_house', label: 'Choir' },
-            { key: 'tv', label: 'Other' },
+            { key: 'tv', label: 'Special Projects' },
             { key: 'government_fund', label: 'Church Project' },
             { key: 'messages_of_hope', label: 'Messages of Hope Radio' },
         ];
@@ -3258,7 +3258,7 @@
                     const headers = [
                         'Date', 'Slip #', 'Name', "Total Rec'd", 
                         'Tithe', 'Special Offering', 'Ingathering', '3ABN/Radio', 'Nehemiah', 'Total Conf Fund',
-                        'Budget Covenant', 'Welfare', 'Church Building Fund', 'School', "Children's Home", 'Refunds', 'Choir', 'Other', 'Church Project', 'Messages of Hope', 'Total Church Funds'
+                        'Budget Covenant', 'Sabbath School', 'Welfare', 'Church Building Fund', 'School', "Children's Home", 'Refunds', 'Choir', 'Special Projects', 'Church Project', 'Messages of Hope', 'Total Church Funds'
                     ];
                     const data = filteredTithes.map(e => [
                         e.date, 
@@ -3272,6 +3272,7 @@
                         parseFloat(e.nehemiah) || '',
                         parseFloat(e.total_conf_fund) || 0,
                         parseFloat(e.budget_covenant) || '',
+                        parseFloat(e.sabbath_school) || '',
                         parseFloat(e.welfare) || '',
                         parseFloat(e.project) || '',
                         parseFloat(e.school) || '',
@@ -3295,6 +3296,7 @@
                         filteredTotals.nehemiah || 0,
                         filteredTotals.totalConfFund,
                         filteredTotals.budget_covenant || 0,
+                        filteredTotals.sabbath_school || 0,
                         filteredTotals.welfare || 0,
                         filteredTotals.project || 0,
                         filteredTotals.school || 0,
@@ -3313,19 +3315,19 @@
                     const grandTotalConference = filteredTotals.grandTotalConference;
                     
                     // Empty row for spacing
-                    const emptyRow = Array(21).fill('');
+                    const emptyRow = Array(22).fill('');
                     
                     // Conference summary rows with 40%/60% breakdown
-                    const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', '', ''];
-                    const breakdownHeaderRow = ['', '', '40% Calculation Breakdown:', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
-                    const budgetCovenantRow = ['', '', '  Budget Covenant', '', '', '', '', '', '', '', filteredTotals.budget_covenant || 0, '', '', '', '', '', '', '', '', '', ''];
-                    const lessSchoolRow = ['', '', '  Less: Contribution to School (Tithe)', '', '', '', '', '', '', '', -(filteredTotals.school || 0), '', '', '', '', '', '', '', '', '', ''];
-                    const lessChildrensHomeRow = ['', '', "  Less: Contribution to Children's Home", '', '', '', '', '', '', '', -(filteredTotals.pos_band || 0), '', '', '', '', '', '', '', '', '', ''];
-                    const lessWesportRow = ['', '', '  Less: School - Wesport (Expenses)', '', '', '', '', '', '', '', -(filteredTotals.wesportExpenses || 0), '', '', '', '', '', '', '', '', '', ''];
-                    const netAmountRow = ['', '', '  Net Amount for 40%/60%', '', '', '', '', '', '', '', filteredTotals.baseFor40_60 || 0, '', '', '', '', '', '', '', '', '', ''];
-                    const percentage40Row = ['', '', '40% of Net Amount (to Conference)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', '', ''];
-                    const percentage60Row = ['', '', '60% Church Operating Income', '', '', '', '', '', '', '', filteredTotals.churchOperating, '', '', '', '', '', '', '', '', '', ''];
-                    const grandTotalRow = ['', '', 'Grand Total To Conference Treasurer', '', '', '', '', '', '', grandTotalConference, '', '', '', '', '', '', '', '', '', '', ''];
+                    const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', '', '', ''];
+                    const breakdownHeaderRow = ['', '', '40% Calculation Breakdown:', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
+                    const budgetCovenantRow = ['', '', '  Budget Covenant', '', '', '', '', '', '', '', filteredTotals.budget_covenant || 0, '', '', '', '', '', '', '', '', '', '', ''];
+                    const lessSchoolRow = ['', '', '  Less: Contribution to School (Tithe)', '', '', '', '', '', '', '', -(filteredTotals.school || 0), '', '', '', '', '', '', '', '', '', '', ''];
+                    const lessChildrensHomeRow = ['', '', "  Less: Contribution to Children's Home", '', '', '', '', '', '', '', -(filteredTotals.pos_band || 0), '', '', '', '', '', '', '', '', '', '', ''];
+                    const lessWesportRow = ['', '', '  Less: School - Wesport (Expenses)', '', '', '', '', '', '', '', -(filteredTotals.wesportExpenses || 0), '', '', '', '', '', '', '', '', '', '', ''];
+                    const netAmountRow = ['', '', '  Net Amount for 40%/60%', '', '', '', '', '', '', '', filteredTotals.baseFor40_60 || 0, '', '', '', '', '', '', '', '', '', '', ''];
+                    const percentage40Row = ['', '', '40% of Net Amount (to Conference)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', '', '', ''];
+                    const percentage60Row = ['', '', '60% Church Operating Income', '', '', '', '', '', '', '', filteredTotals.churchOperating, '', '', '', '', '', '', '', '', '', '', ''];
+                    const grandTotalRow = ['', '', 'Grand Total To Conference Treasurer', '', '', '', '', '', '', grandTotalConference, '', '', '', '', '', '', '', '', '', '', '', ''];
                     
                     const ws = XLSX.utils.aoa_to_sheet([
                         headers, 
@@ -3350,7 +3352,7 @@
                     ws['!cols'] = [
                         {wch: 12}, {wch: 6}, {wch: 30}, {wch: 12},
                         {wch: 10}, {wch: 15}, {wch: 12}, {wch: 12}, {wch: 10},
-                        {wch: 15}, {wch: 15}, {wch: 10}, {wch: 18}, {wch: 10}, {wch: 14}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 14}, {wch: 16}, {wch: 16}
+                        {wch: 15}, {wch: 15}, {wch: 12}, {wch: 10}, {wch: 18}, {wch: 10}, {wch: 14}, {wch: 10}, {wch: 10}, {wch: 14}, {wch: 14}, {wch: 16}, {wch: 16}
                     ];
                     
                     const wb = XLSX.utils.book_new();

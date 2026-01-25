@@ -90,6 +90,7 @@
 
         const CHURCH_FIELDS = [
             { key: 'budget_covenant', label: 'Budget Covenant/Offerings' },
+            { key: 'sabbath_school', label: 'Sabbath School' },
             { key: 'welfare', label: 'Welfare' },
             { key: 'pos_band', label: "Children's Home" },
             { key: 'school', label: 'Contributions to School' },
@@ -445,7 +446,7 @@
             const saveTitheEntry = async (entry) => {
                 try {
                     // Convert empty strings to 0 for numeric fields
-                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'messages_of_hope', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
+                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'sabbath_school', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'messages_of_hope', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
                     const cleanedEntry = { ...entry };
                     numericFields.forEach(field => {
                         if (cleanedEntry[field] === '' || cleanedEntry[field] === null || cleanedEntry[field] === undefined) {
@@ -1179,7 +1180,7 @@
             const today = new Date().toISOString().split('T')[0];
             const initialSlip = initialData ? initialData.slip_number : getNextSlipForDate(today);
             
-            const [form, setForm] = useState(initialData || { date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', project_id: '' });
+            const [form, setForm] = useState(initialData || { date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', sabbath_school: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', project_id: '' });
             const [saving, setSaving] = useState(false);
             const [showNameSuggestions, setShowNameSuggestions] = useState(false);
             

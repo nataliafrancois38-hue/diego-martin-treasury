@@ -90,11 +90,11 @@
             { key: 'ingathering', label: 'Ingathering' },
             { key: 'radio', label: '3ABN/Radio' },
             { key: 'nehemiah', label: 'Nehemiah' },
+            { key: 'sabbath_school', label: 'Sabbath School' },
         ];
 
         const CHURCH_FIELDS = [
             { key: 'budget_covenant', label: 'Budget Covenant/Offerings' },
-            { key: 'sabbath_school', label: 'Sabbath School' },
             { key: 'welfare', label: 'Welfare' },
             { key: 'project', label: 'Church Building Fund' },
             { key: 'school', label: 'Contributions to School' },
@@ -3466,8 +3466,8 @@
                     // Match the exact format from treasurer_book_dec.xlsx
                     const headers = [
                         'Date', 'Slip #', 'Name', "Total Rec'd", 
-                        'Tithe', 'Special Offering', 'Ingathering', '3ABN/Radio', 'Nehemiah', 'Total Conf Fund',
-                        'Budget Covenant', 'Sabbath School', 'Welfare', 'Church Building Fund', 'School', "Children's Home", 'Refunds', 'Choir', 'Special Projects', 'Church Project', 'Messages of Hope', 'Total Church Funds'
+                        'Tithe', 'Special Offering', 'Ingathering', '3ABN/Radio', 'Nehemiah', 'Sabbath School', 'Total Conf Fund',
+                        'Budget Covenant', 'Welfare', 'Church Building Fund', 'School', "Children's Home", 'Refunds', 'Choir', 'Special Projects', 'Church Project', 'Messages of Hope', 'Total Church Funds'
                     ];
                     const data = filteredTithes.map(e => [
                         e.date, 
@@ -3479,9 +3479,9 @@
                         parseFloat(e.ingathering) || '',
                         parseFloat(e.radio) || '',
                         parseFloat(e.nehemiah) || '',
+                        parseFloat(e.sabbath_school) || '',
                         parseFloat(e.total_conf_fund) || 0,
                         parseFloat(e.budget_covenant) || '',
-                        parseFloat(e.sabbath_school) || '',
                         parseFloat(e.welfare) || '',
                         parseFloat(e.project) || '',
                         parseFloat(e.school) || '',
@@ -3503,9 +3503,9 @@
                         filteredTotals.ingathering || 0,
                         filteredTotals.radio || 0,
                         filteredTotals.nehemiah || 0,
+                        filteredTotals.sabbath_school || 0,
                         filteredTotals.totalConfFund,
                         filteredTotals.budget_covenant || 0,
-                        filteredTotals.sabbath_school || 0,
                         filteredTotals.welfare || 0,
                         filteredTotals.project || 0,
                         filteredTotals.school || 0,
@@ -3527,7 +3527,7 @@
                     const emptyRow = Array(22).fill('');
                     
                     // Conference summary rows with 40%/60% breakdown
-                    const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', '', '', ''];
+                    const subTotalRow = ['', '', 'Sub Total Conference Funds', '', '', '', '', '', '', '', subTotalConfFunds, '', '', '', '', '', '', '', '', '', '', ''];
                     const breakdownHeaderRow = ['', '', '40% Calculation Breakdown:', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
                     const budgetCovenantRow = ['', '', '  Budget Covenant', '', '', '', '', '', '', '', filteredTotals.budget_covenant || 0, '', '', '', '', '', '', '', '', '', '', ''];
                     const lessSchoolRow = ['', '', '  Less: Contribution to School (Tithe)', '', '', '', '', '', '', '', -(filteredTotals.school || 0), '', '', '', '', '', '', '', '', '', '', ''];

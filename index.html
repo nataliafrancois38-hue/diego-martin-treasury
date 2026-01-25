@@ -1180,7 +1180,21 @@
             const today = new Date().toISOString().split('T')[0];
             const initialSlip = initialData ? initialData.slip_number : getNextSlipForDate(today);
             
-            const [form, setForm] = useState(initialData || { date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', sabbath_school: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', project_id: '' });
+            // Parse existing project_links if it's a string
+            const parseProjectLinks = (data) => {
+                if (!data) return {};
+                if (typeof data === 'string') {
+                    try { return JSON.parse(data); } catch { return {}; }
+                }
+                return data || {};
+            };
+            
+            const [form, setForm] = useState(initialData ? {
+                ...initialData,
+                project_links: parseProjectLinks(initialData.project_links)
+            } : { 
+                date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', sabbath_school: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', project_links: {} 
+            });
             const [saving, setSaving] = useState(false);
             const [showNameSuggestions, setShowNameSuggestions] = useState(false);
             
@@ -1211,13 +1225,36 @@
             };
             
             const handleChange = (k, v) => setForm(p => ({ ...p, [k]: v }));
+            
+            // Handle project link changes
+            const handleProjectLink = (fieldKey, projectId) => {
+                setForm(p => ({
+                    ...p,
+                    project_links: {
+                        ...p.project_links,
+                        [fieldKey]: projectId || undefined
+                    }
+                }));
+            };
+            
             const confTotal = CONFERENCE_FIELDS.reduce((s, f) => s + (parseFloat(form[f.key]) || 0), 0);
             const churchTotal = CHURCH_FIELDS.reduce((s, f) => s + (parseFloat(form[f.key]) || 0), 0);
             const totalReceived = confTotal + churchTotal;
+            
             const handleSubmit = async (e) => { 
                 e.preventDefault(); 
                 setSaving(true);
-                await onSubmit({ ...form, total_received: totalReceived, total_conf_fund: confTotal, total_church_fund: churchTotal }); 
+                // Clean up project_links - remove empty values and stringify
+                const cleanedLinks = Object.fromEntries(
+                    Object.entries(form.project_links || {}).filter(([k, v]) => v)
+                );
+                await onSubmit({ 
+                    ...form, 
+                    total_received: totalReceived, 
+                    total_conf_fund: confTotal, 
+                    total_church_fund: churchTotal,
+                    project_links: Object.keys(cleanedLinks).length > 0 ? JSON.stringify(cleanedLinks) : null
+                }); 
                 setSaving(false);
             };
             const inputCls = "w-full px-2 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white text-sm";
@@ -1275,22 +1312,39 @@
                                     <div key={f.key}>
                                         <label className="text-xs text-slate-400">{f.label}</label>
                                         <input type="number" step="0.01" value={form[f.key]} onChange={e => handleChange(f.key, e.target.value)} placeholder="0.00" className={inputCls} />
+                                        {/* Show project link dropdown if amount > 0 and projects exist */}
+                                        {parseFloat(form[f.key]) > 0 && activeProjects.length > 0 && (
+                                            <select 
+                                                value={(form.project_links || {})[f.key] || ''} 
+                                                onChange={e => handleProjectLink(f.key, e.target.value)} 
+                                                className="w-full mt-1 px-2 py-1 bg-purple-900/30 border border-purple-500/30 rounded text-purple-300 text-xs"
+                                            >
+                                                <option value="">📁 Link to project...</option>
+                                                {activeProjects.map(p => (
+                                                    <option key={p.id} value={p.id}>📋 {p.name}</option>
+                                                ))}
+                                            </select>
+                                        )}
                                     </div>
                                 ))}
                             </div>
-                            {/* Project Selection - always show if there are active projects */}
-                            {activeProjects.length > 0 && (
-                                <div className="mt-3 p-3 bg-purple-500/10 rounded-lg border border-purple-500/30">
-                                    <label className="text-xs text-purple-400 block mb-1">Link to Project (for tracking contributions)</label>
-                                    <select value={form.project_id || ''} onChange={e => handleChange('project_id', e.target.value)} className={inputCls}>
-                                        <option value="">-- Select Project --</option>
-                                        {activeProjects.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                        ))}
-                                    </select>
-                                    {form.project_id && !(parseFloat(form.project) || parseFloat(form.government_fund)) && (
-                                        <p className="text-xs text-amber-400 mt-1">⚠️ Enter an amount in "Church Building Fund" or "Church Project" above to contribute to this project</p>
-                                    )}
+                            {/* Summary of linked projects */}
+                            {Object.keys(form.project_links || {}).filter(k => form.project_links[k]).length > 0 && (
+                                <div className="mt-3 p-2 bg-purple-500/10 rounded-lg border border-purple-500/30">
+                                    <p className="text-xs text-purple-400 font-medium mb-1">📋 Linked Projects:</p>
+                                    <div className="space-y-1">
+                                        {Object.entries(form.project_links || {}).filter(([k, v]) => v).map(([fieldKey, projectId]) => {
+                                            const field = CHURCH_FIELDS.find(f => f.key === fieldKey);
+                                            const project = activeProjects.find(p => p.id === projectId);
+                                            const amount = parseFloat(form[fieldKey]) || 0;
+                                            return field && project ? (
+                                                <div key={fieldKey} className="flex justify-between text-xs">
+                                                    <span className="text-slate-400">{field.label} → {project.name}</span>
+                                                    <span className="text-purple-400">{fmtCur(amount)}</span>
+                                                </div>
+                                            ) : null;
+                                        })}
+                                    </div>
                                 </div>
                             )}
                             <div className="mt-2 p-2 bg-blue-500/10 rounded-lg flex justify-between text-sm"><span className="text-blue-400">Subtotal</span><span className="text-white font-bold">{fmtCur(churchTotal)}</span></div>
@@ -2103,13 +2157,32 @@
                 onUpdate();
             };
 
-            // Calculate project financials
+            // Calculate project financials - supports both old project_id and new project_links
             const getProjectFinancials = (projectId) => {
                 const project = projects.find(p => p.id === projectId);
                 const openingBalance = parseFloat(project?.opening_balance) || 0;
-                const income = titheEntries
-                    .filter(t => t.project_id === projectId)
-                    .reduce((sum, t) => sum + (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0), 0);
+                
+                // Calculate income from tithe entries
+                let income = 0;
+                titheEntries.forEach(t => {
+                    // Support old project_id field (backward compatibility)
+                    if (t.project_id === projectId) {
+                        income += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                    }
+                    
+                    // Support new project_links JSON field
+                    if (t.project_links) {
+                        try {
+                            const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                            Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
+                                if (linkedProjectId === projectId) {
+                                    income += parseFloat(t[fieldKey]) || 0;
+                                }
+                            });
+                        } catch (e) { /* ignore parse errors */ }
+                    }
+                });
+                
                 const spent = expenses
                     .filter(e => e.project_id === projectId)
                     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
@@ -2117,10 +2190,27 @@
                 return { openingBalance, income, totalIncome, spent, balance: totalIncome - spent };
             };
 
+            // Get tithe entries linked to a project (for display/export)
+            const getProjectTithes = (projectId) => {
+                return titheEntries.filter(t => {
+                    // Check old project_id
+                    if (t.project_id === projectId) return true;
+                    
+                    // Check new project_links
+                    if (t.project_links) {
+                        try {
+                            const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                            return Object.values(links).includes(projectId);
+                        } catch (e) { return false; }
+                    }
+                    return false;
+                });
+            };
+
             const exportProjectReport = (project) => {
                 try {
                     const financials = getProjectFinancials(project.id);
-                    const projectTithes = titheEntries.filter(t => t.project_id === project.id);
+                    const projectTithes = getProjectTithes(project.id);
                     const projectExpenses = expenses.filter(e => e.project_id === project.id);
                     
                     const data = [
@@ -3416,18 +3506,51 @@
                 }
             };
 
-            // Calculate project financials
+            // Calculate project financials - supports both old project_id and new project_links
             const getProjectFinancials = (projectId) => {
                 const project = (projects || []).find(p => p.id === projectId);
                 const openingBalance = parseFloat(project?.opening_balance) || 0;
-                const income = titheEntries
-                    .filter(t => t.project_id === projectId)
-                    .reduce((sum, t) => sum + (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0), 0);
+                
+                // Calculate income from tithe entries
+                let income = 0;
+                titheEntries.forEach(t => {
+                    // Support old project_id field (backward compatibility)
+                    if (t.project_id === projectId) {
+                        income += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                    }
+                    
+                    // Support new project_links JSON field
+                    if (t.project_links) {
+                        try {
+                            const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                            Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
+                                if (linkedProjectId === projectId) {
+                                    income += parseFloat(t[fieldKey]) || 0;
+                                }
+                            });
+                        } catch (e) { /* ignore parse errors */ }
+                    }
+                });
+                
                 const spent = expenses
                     .filter(e => e.project_id === projectId)
                     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                 const totalIncome = openingBalance + income;
                 return { openingBalance, income, totalIncome, spent, balance: totalIncome - spent };
+            };
+
+            // Get tithe entries linked to a project (for display/export)
+            const getProjectTithes = (projectId) => {
+                return titheEntries.filter(t => {
+                    if (t.project_id === projectId) return true;
+                    if (t.project_links) {
+                        try {
+                            const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                            return Object.values(links).includes(projectId);
+                        } catch (e) { return false; }
+                    }
+                    return false;
+                });
             };
 
             const exportProjectsReport = () => {
@@ -3470,8 +3593,29 @@
                     // Add detail sheet for each project
                     allProjects.forEach(project => {
                         const financials = getProjectFinancials(project.id);
-                        const projectTithes = titheEntries.filter(t => t.project_id === project.id);
+                        const projectTithes = getProjectTithes(project.id);
                         const projectExpenses = expenses.filter(e => e.project_id === project.id);
+                        
+                        // Calculate amount for each tithe entry linked to this project
+                        const getTitheAmount = (t) => {
+                            let amount = 0;
+                            // Old project_id method
+                            if (t.project_id === project.id) {
+                                amount += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                            }
+                            // New project_links method
+                            if (t.project_links) {
+                                try {
+                                    const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                                    Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
+                                        if (linkedProjectId === project.id) {
+                                            amount += parseFloat(t[fieldKey]) || 0;
+                                        }
+                                    });
+                                } catch (e) {}
+                            }
+                            return amount;
+                        };
                         
                         const detailData = [
                             ['PROJECT: ' + project.name],
@@ -3480,7 +3624,7 @@
                             [],
                             ['INCOME'],
                             ['Date', 'Member', 'Amount'],
-                            ...projectTithes.map(t => [t.date, t.name, (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0)]),
+                            ...projectTithes.map(t => [t.date, t.name, getTitheAmount(t)]),
                             ['', 'Total Income:', financials.income],
                             [],
                             ['EXPENSES'],

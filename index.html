@@ -389,6 +389,26 @@
             const [editingItem, setEditingItem] = useState(null);
             const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
             const [loading, setLoading] = useState(true);
+            
+            // Search state
+            const [showSearch, setShowSearch] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            
+            // Keyboard shortcut for search (Ctrl+K or Cmd+K)
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                        e.preventDefault();
+                        setShowSearch(true);
+                    }
+                    if (e.key === 'Escape' && showSearch) {
+                        setShowSearch(false);
+                        setSearchQuery('');
+                    }
+                };
+                document.addEventListener('keydown', handleKeyDown);
+                return () => document.removeEventListener('keydown', handleKeyDown);
+            }, [showSearch]);
 
             // Role-based access control
             const userRole = user?.user_metadata?.role || 'treasurer';
@@ -644,6 +664,47 @@
             const expenseTotal = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const depositTotal = deposits.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
 
+            // Search function
+            const getSearchResults = () => {
+                if (!searchQuery || searchQuery.length < 2) return { tithes: [], expenses: [], deposits: [], cheques: [], projects: [] };
+                const q = searchQuery.toLowerCase();
+                
+                const tithes = titheEntries.filter(t => 
+                    t.name?.toLowerCase().includes(q) || 
+                    t.date?.includes(q) ||
+                    String(t.slip_number)?.includes(q)
+                ).slice(0, 10);
+                
+                const expenseResults = expenses.filter(e => 
+                    e.description?.toLowerCase().includes(q) || 
+                    e.category?.toLowerCase().includes(q) ||
+                    e.department?.toLowerCase().includes(q) ||
+                    e.date?.includes(q) ||
+                    e.cheque_number?.includes(q)
+                ).slice(0, 10);
+                
+                const depositResults = deposits.filter(d => 
+                    d.description?.toLowerCase().includes(q) || 
+                    d.date?.includes(q)
+                ).slice(0, 10);
+                
+                const chequeResults = (cheques || []).filter(c => 
+                    c.payee?.toLowerCase().includes(q) || 
+                    c.description?.toLowerCase().includes(q) ||
+                    String(c.cheque_number)?.includes(q)
+                ).slice(0, 10);
+                
+                const projectResults = (projects || []).filter(p => 
+                    p.name?.toLowerCase().includes(q) || 
+                    p.description?.toLowerCase().includes(q)
+                ).slice(0, 10);
+                
+                return { tithes, expenses: expenseResults, deposits: depositResults, cheques: chequeResults, projects: projectResults };
+            };
+            
+            const searchResults = getSearchResults();
+            const totalResults = searchResults.tithes.length + searchResults.expenses.length + searchResults.deposits.length + searchResults.cheques.length + searchResults.projects.length;
+
             return (
                 <div className="min-h-screen">
                     {/* Header */}
@@ -665,6 +726,9 @@
                                     ))}
                                 </nav>
                                 <div className="flex items-center gap-2">
+                                    <button onClick={() => setShowSearch(true)} className="p-1.5 rounded-lg bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white" title="Search (Ctrl+K)">
+                                        🔍
+                                    </button>
                                     <div className="hidden sm:flex items-center gap-2">
                                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${currentRole.color} text-white`}>
                                             {currentRole.icon} {currentRole.label}
@@ -681,6 +745,151 @@
                             )}
                         </div>
                     </header>
+
+                    {/* Search Modal */}
+                    {showSearch && (
+                        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-20 px-4" onClick={() => setShowSearch(false)}>
+                            <div className="bg-slate-800 rounded-xl border border-slate-600 w-full max-w-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 border-b border-slate-700">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xl">🔍</span>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search tithes, expenses, deposits, cheques, projects..." 
+                                            value={searchQuery}
+                                            onChange={e => setSearchQuery(e.target.value)}
+                                            className="flex-1 bg-transparent text-white text-lg outline-none placeholder-slate-500"
+                                            autoFocus
+                                        />
+                                        <button onClick={() => setShowSearch(false)} className="text-slate-400 hover:text-white">✕</button>
+                                    </div>
+                                </div>
+                                
+                                {searchQuery.length >= 2 ? (
+                                    <div className="max-h-96 overflow-y-auto">
+                                        {totalResults === 0 ? (
+                                            <div className="p-8 text-center text-slate-400">
+                                                <p className="text-4xl mb-2">🔍</p>
+                                                <p>No results found for "{searchQuery}"</p>
+                                            </div>
+                                        ) : (
+                                            <div className="p-2">
+                                                {/* Tithe Results */}
+                                                {searchResults.tithes.length > 0 && (
+                                                    <div className="mb-3">
+                                                        <p className="text-xs text-amber-400 font-semibold px-2 py-1">TITHES ({searchResults.tithes.length})</p>
+                                                        {searchResults.tithes.map(t => (
+                                                            <div 
+                                                                key={t.id} 
+                                                                onClick={() => { setShowSearch(false); setSearchQuery(''); setView('tithe'); }}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer"
+                                                            >
+                                                                <div>
+                                                                    <p className="text-white text-sm font-medium">{t.name}</p>
+                                                                    <p className="text-slate-400 text-xs">Slip #{t.slip_number} • {t.date}</p>
+                                                                </div>
+                                                                <span className="text-amber-400 font-medium">{fmtCur(t.total_received)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Expense Results */}
+                                                {searchResults.expenses.length > 0 && (
+                                                    <div className="mb-3">
+                                                        <p className="text-xs text-red-400 font-semibold px-2 py-1">EXPENSES ({searchResults.expenses.length})</p>
+                                                        {searchResults.expenses.map(e => (
+                                                            <div 
+                                                                key={e.id} 
+                                                                onClick={() => { setShowSearch(false); setSearchQuery(''); setView('expenses'); }}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer"
+                                                            >
+                                                                <div>
+                                                                    <p className="text-white text-sm font-medium">{e.description}</p>
+                                                                    <p className="text-slate-400 text-xs">{e.category} • {e.date}</p>
+                                                                </div>
+                                                                <span className="text-red-400 font-medium">{fmtCur(e.amount)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Deposit Results */}
+                                                {searchResults.deposits.length > 0 && (
+                                                    <div className="mb-3">
+                                                        <p className="text-xs text-purple-400 font-semibold px-2 py-1">DEPOSITS ({searchResults.deposits.length})</p>
+                                                        {searchResults.deposits.map(d => (
+                                                            <div 
+                                                                key={d.id} 
+                                                                onClick={() => { setShowSearch(false); setSearchQuery(''); setView('deposits'); }}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer"
+                                                            >
+                                                                <div>
+                                                                    <p className="text-white text-sm font-medium">{d.description || 'Deposit'}</p>
+                                                                    <p className="text-slate-400 text-xs">{d.date}</p>
+                                                                </div>
+                                                                <span className="text-purple-400 font-medium">{fmtCur(d.total)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Cheque Results */}
+                                                {searchResults.cheques.length > 0 && (
+                                                    <div className="mb-3">
+                                                        <p className="text-xs text-cyan-400 font-semibold px-2 py-1">CHEQUES ({searchResults.cheques.length})</p>
+                                                        {searchResults.cheques.map(c => (
+                                                            <div 
+                                                                key={c.id} 
+                                                                onClick={() => { setShowSearch(false); setSearchQuery(''); setView('cheques'); }}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer"
+                                                            >
+                                                                <div>
+                                                                    <p className="text-white text-sm font-medium">{c.payee}</p>
+                                                                    <p className="text-slate-400 text-xs">#{c.cheque_number} • {c.description}</p>
+                                                                </div>
+                                                                <span className="text-cyan-400 font-medium">{fmtCur(c.amount)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Project Results */}
+                                                {searchResults.projects.length > 0 && (
+                                                    <div className="mb-3">
+                                                        <p className="text-xs text-emerald-400 font-semibold px-2 py-1">PROJECTS ({searchResults.projects.length})</p>
+                                                        {searchResults.projects.map(p => (
+                                                            <div 
+                                                                key={p.id} 
+                                                                onClick={() => { setShowSearch(false); setSearchQuery(''); setView('projects'); }}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-slate-700/50 rounded-lg cursor-pointer"
+                                                            >
+                                                                <div>
+                                                                    <p className="text-white text-sm font-medium">{p.name}</p>
+                                                                    <p className="text-slate-400 text-xs">{p.status} • Target: {fmtCur(p.target_amount)}</p>
+                                                                </div>
+                                                                <span className={`text-xs px-2 py-0.5 rounded ${p.status === 'Active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-500/20 text-slate-400'}`}>{p.status}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="p-8 text-center text-slate-400">
+                                        <p className="text-sm">Type at least 2 characters to search</p>
+                                        <p className="text-xs mt-2 text-slate-500">Search by name, date, slip #, description, category, cheque #, etc.</p>
+                                    </div>
+                                )}
+                                
+                                <div className="p-3 border-t border-slate-700 flex justify-between text-xs text-slate-500">
+                                    <span>Press ESC to close</span>
+                                    <span>{totalResults} result{totalResults !== 1 ? 's' : ''}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <main className="max-w-7xl mx-auto px-3 py-4">
                         {/* Dashboard */}

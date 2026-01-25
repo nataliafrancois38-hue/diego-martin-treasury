@@ -35,6 +35,10 @@
         * { font-family: system-ui, -apple-system, sans-serif; }
         body { margin: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); min-height: 100vh; }
         input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+        /* Fix dropdown option visibility */
+        select { background-color: #0f172a !important; color: #fff !important; }
+        select option { background-color: #1e293b !important; color: #fff !important; padding: 8px; }
+        select option:hover, select option:checked { background-color: #334155 !important; }
         @media print { body { background: white; } .no-print { display: none; } }
     </style>
 </head>
@@ -1317,7 +1321,7 @@
                                             <select 
                                                 value={(form.project_links || {})[f.key] || ''} 
                                                 onChange={e => handleProjectLink(f.key, e.target.value)} 
-                                                className="w-full mt-1 px-2 py-1 bg-purple-900/30 border border-purple-500/30 rounded text-purple-300 text-xs"
+                                                className="w-full mt-1 px-2 py-1 border border-purple-500/50 rounded text-xs"
                                             >
                                                 <option value="">-- Link to project --</option>
                                                 {activeProjects.map(p => (

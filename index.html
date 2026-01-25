@@ -4191,8 +4191,11 @@
                         // Church Operating Income (60%)
                         const churchOperatingIncome = filteredTotals.churchOperating;
                         
-                        // Total Funds (Projects + Church Operating)
-                        const totalFunds = totalProjectFunds + churchOperatingIncome;
+                        // Conference Funds (Tithe + 40% - needs to be remitted to Conference)
+                        const conferenceFunds = filteredTotals.grandTotalConference;
+                        
+                        // Total Allocated Funds (Projects + Church Operating + Conference)
+                        const totalAllocatedFunds = totalProjectFunds + churchOperatingIncome + conferenceFunds;
                         
                         // Calculate Chequing Account Balance
                         // Total Deposits - Total Expenses (all time for accurate balance)
@@ -4200,11 +4203,11 @@
                         const totalExpensesAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const chequingBalance = totalDeposits - totalExpensesAll;
                         
-                        // Church Reserves = Chequing Balance - Total Funds
-                        const churchReserves = chequingBalance - totalFunds;
+                        // Church Reserves = Chequing Balance - Total Allocated Funds
+                        const churchReserves = chequingBalance - totalAllocatedFunds;
                         
-                        // Right side total (should equal chequing balance)
-                        const rightSideTotal = totalFunds + churchReserves;
+                        // Left side total (should equal chequing balance)
+                        const leftSideTotal = totalAllocatedFunds + churchReserves;
                         
                         return (
                             <div className="space-y-4">
@@ -4215,23 +4218,33 @@
                                             const data = [
                                                 ['FUND DISTRIBUTION REPORT'],
                                                 [`As at: ${new Date().toLocaleDateString()}`],
+                                                [`Period: ${startDate} to ${endDate}`],
                                                 [],
-                                                ['FUNDS', '', 'CHEQUING ACCOUNT'],
+                                                ['FUNDS', 'Amount', 'CHEQUING ACCOUNT', 'Amount'],
                                                 [],
-                                                ['PROJECT FUNDS', '', 'Account Balance'],
-                                                ...projectFunds.map(p => [p.name, p.balance, '']),
-                                                ['Total Project Funds', totalProjectFunds, ''],
+                                                ['PROJECT FUNDS', '', '', ''],
+                                                ...projectFunds.map(p => [p.name, p.balance, '', '']),
+                                                ['Total Project Funds', totalProjectFunds, '', ''],
                                                 [],
-                                                ['Church Operating Income (60%)', churchOperatingIncome, ''],
+                                                ['Church Operating Income (60%)', churchOperatingIncome, 'Total Deposits', totalDeposits],
+                                                ['Conference Funds (to remit)', conferenceFunds, 'Less: Total Expenses', -totalExpensesAll],
                                                 [],
-                                                ['TOTAL FUNDS', totalFunds, ''],
+                                                ['TOTAL ALLOCATED FUNDS', totalAllocatedFunds, '', ''],
                                                 [],
-                                                ['Church Reserves', churchReserves, 'Chequing Balance'],
+                                                ['Church Reserves', churchReserves, 'CHEQUING BALANCE', chequingBalance],
                                                 [],
-                                                ['BALANCE', totalFunds + churchReserves, chequingBalance]
+                                                ['BALANCE', leftSideTotal, 'BALANCE', chequingBalance],
+                                                [],
+                                                [],
+                                                ['VERIFICATION'],
+                                                ['Total Allocated Funds', totalAllocatedFunds],
+                                                ['+ Church Reserves', churchReserves],
+                                                ['= Total', leftSideTotal],
+                                                ['Chequing Balance', chequingBalance],
+                                                [leftSideTotal === chequingBalance ? 'BALANCED ✓' : 'UNBALANCED ✗', '']
                                             ];
                                             const ws = XLSX.utils.aoa_to_sheet(data);
-                                            ws['!cols'] = [{wch: 35}, {wch: 18}, {wch: 18}];
+                                            ws['!cols'] = [{wch: 35}, {wch: 18}, {wch: 25}, {wch: 18}];
                                             const wb = XLSX.utils.book_new();
                                             XLSX.utils.book_append_sheet(wb, ws, 'Fund Distribution');
                                             XLSX.writeFile(wb, `Fund_Distribution_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -4259,17 +4272,26 @@
                                             </div>
                                             
                                             {/* Church Operating */}
-                                            <div className="mb-4">
+                                            <div className="mb-2">
                                                 <div className="flex justify-between py-2 border-b border-slate-600">
                                                     <span className="text-cyan-400 text-sm">Church Operating Income (60%)</span>
                                                     <span className="text-cyan-400 font-medium">{fmtCur(churchOperatingIncome)}</span>
                                                 </div>
                                             </div>
                                             
-                                            {/* Total Funds */}
+                                            {/* Conference Funds */}
+                                            <div className="mb-4">
+                                                <div className="flex justify-between py-2 border-b border-slate-600">
+                                                    <span className="text-teal-400 text-sm">Conference Funds (to remit)</span>
+                                                    <span className="text-teal-400 font-medium">{fmtCur(conferenceFunds)}</span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1 pl-2">Tithe + 40% of Budget Covenant</p>
+                                            </div>
+                                            
+                                            {/* Total Allocated Funds */}
                                             <div className="flex justify-between py-3 bg-purple-500/20 rounded-lg px-3 mt-4">
-                                                <span className="text-purple-400 font-bold">TOTAL FUNDS</span>
-                                                <span className="text-purple-400 font-bold text-lg">{fmtCur(totalFunds)}</span>
+                                                <span className="text-purple-400 font-bold">TOTAL ALLOCATED FUNDS</span>
+                                                <span className="text-purple-400 font-bold text-lg">{fmtCur(totalAllocatedFunds)}</span>
                                             </div>
                                             
                                             {/* Church Reserves */}
@@ -4278,12 +4300,13 @@
                                                     <span className="text-amber-400 text-sm">Church Reserves</span>
                                                     <span className={`font-medium ${churchReserves >= 0 ? 'text-amber-400' : 'text-red-400'}`}>{fmtCur(churchReserves)}</span>
                                                 </div>
+                                                <p className="text-xs text-slate-500 pl-2">Unallocated funds available</p>
                                             </div>
                                             
                                             {/* Balance */}
                                             <div className="flex justify-between py-3 bg-blue-500/20 rounded-lg px-3 mt-4 border-2 border-blue-500/50">
                                                 <span className="text-blue-400 font-bold">BALANCE</span>
-                                                <span className="text-blue-400 font-bold text-lg">{fmtCur(rightSideTotal)}</span>
+                                                <span className="text-blue-400 font-bold text-lg">{fmtCur(leftSideTotal)}</span>
                                             </div>
                                         </div>
                                         
@@ -4292,13 +4315,13 @@
                                             <h4 className="text-sm font-semibold text-blue-400 mb-4 pb-2 border-b border-slate-600">CHEQUING ACCOUNT</h4>
                                             
                                             <div className="space-y-4">
-                                                <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
+                                                <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/30">
                                                     <p className="text-xs text-slate-400 mb-1">Total Deposits</p>
                                                     <p className="text-xl font-bold text-emerald-400">{fmtCur(totalDeposits)}</p>
                                                 </div>
                                                 
                                                 <div className="p-4 bg-red-500/10 rounded-lg border border-red-500/30">
-                                                    <p className="text-xs text-slate-400 mb-1">Total Expenses</p>
+                                                    <p className="text-xs text-slate-400 mb-1">Less: Total Expenses</p>
                                                     <p className="text-xl font-bold text-red-400">-{fmtCur(totalExpensesAll)}</p>
                                                 </div>
                                                 
@@ -4310,23 +4333,33 @@
                                                 </div>
                                             </div>
                                             
-                                            {/* Verification */}
+                                            {/* Allocation Breakdown */}
                                             <div className="mt-6 p-4 bg-slate-800 rounded-lg border border-slate-600">
-                                                <p className="text-xs text-slate-400 mb-2">Verification</p>
-                                                <div className="flex justify-between py-1 text-sm">
-                                                    <span className="text-slate-300">Total Funds</span>
-                                                    <span className="text-slate-300">{fmtCur(totalFunds)}</span>
+                                                <p className="text-xs text-slate-400 mb-3">How Chequing Balance is Allocated:</p>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between py-1 text-sm">
+                                                        <span className="text-emerald-400">Project Funds</span>
+                                                        <span className="text-emerald-400">{fmtCur(totalProjectFunds)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between py-1 text-sm">
+                                                        <span className="text-cyan-400">Church Operating (60%)</span>
+                                                        <span className="text-cyan-400">{fmtCur(churchOperatingIncome)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between py-1 text-sm">
+                                                        <span className="text-teal-400">Conference Funds</span>
+                                                        <span className="text-teal-400">{fmtCur(conferenceFunds)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between py-1 text-sm border-t border-slate-600 pt-2">
+                                                        <span className="text-amber-400">Church Reserves</span>
+                                                        <span className={churchReserves >= 0 ? 'text-amber-400' : 'text-red-400'}>{fmtCur(churchReserves)}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="flex justify-between py-1 text-sm">
-                                                    <span className="text-slate-300">+ Church Reserves</span>
-                                                    <span className="text-slate-300">{fmtCur(churchReserves)}</span>
-                                                </div>
-                                                <div className="flex justify-between py-2 border-t border-slate-600 mt-2 font-bold">
-                                                    <span className={rightSideTotal === chequingBalance ? 'text-emerald-400' : 'text-red-400'}>
-                                                        {rightSideTotal === chequingBalance ? '✓ Balanced' : '✗ Unbalanced'}
+                                                <div className="flex justify-between py-2 border-t border-slate-600 mt-3 font-bold">
+                                                    <span className={Math.abs(leftSideTotal - chequingBalance) < 0.01 ? 'text-emerald-400' : 'text-red-400'}>
+                                                        {Math.abs(leftSideTotal - chequingBalance) < 0.01 ? '✓ Balanced' : '✗ Unbalanced'}
                                                     </span>
-                                                    <span className={rightSideTotal === chequingBalance ? 'text-emerald-400' : 'text-red-400'}>
-                                                        {fmtCur(rightSideTotal)}
+                                                    <span className={Math.abs(leftSideTotal - chequingBalance) < 0.01 ? 'text-emerald-400' : 'text-red-400'}>
+                                                        {fmtCur(leftSideTotal)}
                                                     </span>
                                                 </div>
                                             </div>

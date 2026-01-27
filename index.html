@@ -386,7 +386,7 @@
             const [budgetItems, setBudgetItems] = useState([]);
             const [projects, setProjects] = useState([]);
             const [cheques, setCheques] = useState([]);
-            const [settings, setSettings] = useState({ previous_balance: 0 });
+            const [settings, setSettings] = useState({ previous_balance: 0, unit_trust: 79082.04, revolving_fund: 597996.24 });
             const [view, setView] = useState('dashboard');
             const [editingItem, setEditingItem] = useState(null);
             const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
@@ -1363,6 +1363,7 @@
                                 deposits={deposits} 
                                 settings={settings}
                                 saveSettings={saveSettings}
+                                projects={projects}
                             />
                         )}
                     </main>
@@ -1819,21 +1820,33 @@
         }
 
         // Financial Statement Component
-        function FinancialStatement({ titheEntries, expenses, deposits, settings, saveSettings }) {
+        function FinancialStatement({ titheEntries, expenses, deposits, settings, saveSettings, projects }) {
             const { supabase } = useContext(AuthContext);
             const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
             const [prevBalance, setPrevBalance] = useState(settings.previous_balance || 0);
+            const [unitTrust, setUnitTrust] = useState(settings.unit_trust || 79082.04);
+            const [revolvingFund, setRevolvingFund] = useState(settings.revolving_fund || 597996.24);
 
             const monthStart = month + '-01';
             const monthEnd = month + '-31';
             const monthEntries = titheEntries.filter(e => e.date >= monthStart && e.date <= monthEnd);
             const monthExpenses = expenses.filter(e => e.date >= monthStart && e.date <= monthEnd);
             const monthDeposits = deposits.filter(d => d.date >= monthStart && d.date <= monthEnd);
+            
+            // Previous months (year to date up to but not including current month)
+            const yearStart = month.slice(0, 4) + '-01-01';
+            const prevMonthEnd = new Date(month + '-01');
+            prevMonthEnd.setDate(0); // Last day of previous month
+            const prevMonthEndStr = prevMonthEnd.toISOString().slice(0, 10);
+            const prevMonthEntries = titheEntries.filter(e => e.date >= yearStart && e.date <= prevMonthEndStr);
+            const prevMonthExpenses = expenses.filter(e => e.date >= yearStart && e.date <= prevMonthEndStr);
 
             const thisMonthTotals = calculateTitheTotals(monthEntries, monthExpenses);
+            const prevMonthTotals = calculateTitheTotals(prevMonthEntries, prevMonthExpenses);
             const allTimeTotals = calculateTitheTotals(titheEntries, expenses);
 
             const thisMonthExpenseTotal = monthExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            const prevMonthExpenseTotal = prevMonthExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const allTimeExpenseTotal = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const depositTotal = monthDeposits.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
 
@@ -1842,67 +1855,271 @@
             const increaseDecrease = thisMonthTotals.churchOperating - thisMonthExpenseTotal;
 
             const monthName = new Date(month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const monthDate = new Date(month + '-01');
+            const lastDayOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+            const monthEndDate = `${monthDate.toLocaleDateString('en-US', { month: 'long' })} ${lastDayOfMonth}${lastDayOfMonth === 1 ? 'st' : lastDayOfMonth === 2 ? 'nd' : lastDayOfMonth === 3 ? 'rd' : 'th'} ${monthDate.getFullYear()}`;
 
             const handleSaveBalance = async () => {
-                const newSettings = { ...settings, previous_balance: parseFloat(prevBalance) || 0 };
+                const newSettings = { 
+                    ...settings, 
+                    previous_balance: parseFloat(prevBalance) || 0,
+                    unit_trust: parseFloat(unitTrust) || 0,
+                    revolving_fund: parseFloat(revolvingFund) || 0
+                };
                 await supabase.from('settings').update(newSettings).eq('id', 1);
                 saveSettings(newSettings);
             };
 
-            const exportToExcel = () => {
-                const data = [
-                    ['DIEGO MARTIN SDA CHURCH'],
-                    ['TREASURY MANAGEMENT SYSTEM'],
-                    [`FINANCIAL STATEMENT for ${monthName}`],
-                    [],
-                    ['CONFERENCE FUNDS', 'THIS MONTH', 'TOTAL TO DATE'],
-                    ...CONFERENCE_FIELDS.map(f => [f.label, thisMonthTotals[f.key], allTimeTotals[f.key]]),
-                    ['Sub Total Conference Funds', thisMonthTotals.totalConfFund, allTimeTotals.totalConfFund],
-                    [],
-                    ['40% CALCULATION BREAKDOWN'],
-                    ['Budget Covenant', thisMonthTotals.budget_covenant, allTimeTotals.budget_covenant],
-                    ['Less: Contribution to School (Tithe)', -(thisMonthTotals.school || 0), -(allTimeTotals.school || 0)],
-                    ["Less: Contribution to Children's Home", -(thisMonthTotals.pos_band || 0), -(allTimeTotals.pos_band || 0)],
-                    ['Less: School - Wesport (Expenses)', -(thisMonthTotals.wesportExpenses || 0), -(allTimeTotals.wesportExpenses || 0)],
-                    ['Net Amount for 40%/60%', thisMonthTotals.baseFor40_60 || 0, allTimeTotals.baseFor40_60 || 0],
-                    ['40% of Net Amount', thisMonthTotals.percentage40, allTimeTotals.percentage40],
-                    [],
-                    ['Total Conference Funds', thisMonthTotals.grandTotalConference, allTimeTotals.grandTotalConference],
-                    [],
-                    ['CHURCH FUNDS'],
-                    ...CHURCH_FIELDS.map(f => [f.label, thisMonthTotals[f.key], allTimeTotals[f.key]]),
-                    ['TOTAL CHURCH INCOME', thisMonthTotals.totalChurchFund, allTimeTotals.totalChurchFund],
-                    [],
-                    ['60% CALCULATION'],
-                    ['Budget Covenant', thisMonthTotals.budget_covenant, allTimeTotals.budget_covenant],
-                    ['Less: Contribution to School (Tithe)', -(thisMonthTotals.school || 0), -(allTimeTotals.school || 0)],
-                    ["Less: Contribution to Children's Home", -(thisMonthTotals.pos_band || 0), -(allTimeTotals.pos_band || 0)],
-                    ['Less: School - Wesport (Expenses)', -(thisMonthTotals.wesportExpenses || 0), -(allTimeTotals.wesportExpenses || 0)],
-                    ['Net Amount for 40%/60%', thisMonthTotals.baseFor40_60 || 0, allTimeTotals.baseFor40_60 || 0],
-                    ['60% CHURCH OPERATING INCOME', thisMonthTotals.churchOperating, allTimeTotals.churchOperating],
-                    [],
-                    ['EXPENDITURE', 'THIS MONTH', 'TOTAL'],
-                    ...EXPENSE_CATEGORIES.map(cat => {
-                        const tm = monthExpenses.filter(e => e.category === cat || e.description === cat).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const tot = expenses.filter(e => e.category === cat || e.description === cat).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        return tm > 0 || tot > 0 ? [cat, tm, tot] : null;
-                    }).filter(Boolean),
-                    ['TOTAL EXPENSES', thisMonthExpenseTotal, allTimeExpenseTotal],
-                    [],
-                    ['Reconciliation'],
-                    ['Increase/Decrease', increaseDecrease],
-                    ['Previous Balance', prevBalance],
-                    [`Balance as at ${monthName}`, parseFloat(prevBalance) + increaseDecrease],
-                    [],
-                    ['MONTHLY EXPENSES DETAIL'],
-                    ['Date', 'Description', 'Department', 'Cheque #', 'Voucher #', 'Amount'],
-                    ...monthExpenses.map(e => [e.date, e.description, e.department || '', e.cheque_number || '', e.voucher_number || '', parseFloat(e.amount) || 0]),
-                    [],
-                    ['MONTHLY DEPOSITS'],
-                    ['Date', 'Description', 'Cash', 'Cheques', 'Total'],
-                    ...monthDeposits.map(d => [d.date, d.description, parseFloat(d.cash) || 0, parseFloat(d.cheques) || 0, parseFloat(d.total) || 0]),
+            // Get project financials for distribution of funds
+            const getProjectBalance = (projectName) => {
+                const project = projects.find(p => p.name.toLowerCase().includes(projectName.toLowerCase()));
+                if (!project) return 0;
+                const openingBalance = parseFloat(project.opening_balance) || 0;
+                let income = 0;
+                titheEntries.forEach(t => {
+                    if (t.project_id === project.id) {
+                        income += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                    }
+                    if (t.project_links) {
+                        try {
+                            const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                            Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
+                                if (linkedProjectId === project.id) {
+                                    income += parseFloat(t[fieldKey]) || 0;
+                                }
+                            });
+                        } catch (e) { }
+                    }
+                });
+                const spent = expenses.filter(e => e.project_id === project.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                return openingBalance + income - spent;
+            };
+
+            // Export Financial Statement in exact format
+            const exportFinancialStatement = () => {
+                // Calculate totals for this month and previous months
+                const tmTotals = thisMonthTotals;
+                const pmTotals = prevMonthTotals;
+                
+                // Total to date = this month + previous months
+                const ttdTithe = (tmTotals.tithe || 0) + (pmTotals.tithe || 0);
+                const ttdSabbathSchool = (tmTotals.sabbath_school || 0) + (pmTotals.sabbath_school || 0);
+                const ttdIngathering = (tmTotals.ingathering || 0) + (pmTotals.ingathering || 0);
+                const ttdNehemiah = (tmTotals.nehemiah || 0) + (pmTotals.nehemiah || 0);
+                const ttdCommunityHospital = 0; // Add if you have this field
+                const ttd3ABN = (tmTotals.radio_3abn || 0) + (pmTotals.radio_3abn || 0);
+                const tmSubTotalConf = (tmTotals.tithe || 0) + (tmTotals.sabbath_school || 0) + (tmTotals.ingathering || 0) + (tmTotals.nehemiah || 0) + (tmTotals.radio_3abn || 0);
+                const pmSubTotalConf = (pmTotals.tithe || 0) + (pmTotals.sabbath_school || 0) + (pmTotals.ingathering || 0) + (pmTotals.nehemiah || 0) + (pmTotals.radio_3abn || 0);
+                const ttdSubTotalConf = tmSubTotalConf + pmSubTotalConf;
+                
+                // 40% calculation
+                const tm40Percent = tmTotals.percentage40 || 0;
+                const pm40Percent = pmTotals.percentage40 || 0;
+                const ttd40Percent = tm40Percent + pm40Percent;
+                
+                const tmTotalConf = tmSubTotalConf + tm40Percent;
+                const pmTotalConf = pmSubTotalConf + pm40Percent;
+                const ttdTotalConf = ttdSubTotalConf + ttd40Percent;
+                
+                // Church Funds
+                const tmBudgetCovenant = tmTotals.budget_covenant || 0;
+                const pmBudgetCovenant = pmTotals.budget_covenant || 0;
+                const ttdBudgetCovenant = tmBudgetCovenant + pmBudgetCovenant;
+                
+                const tmChildrensHome = tmTotals.pos_band || 0;
+                const pmChildrensHome = pmTotals.pos_band || 0;
+                const ttdChildrensHome = tmChildrensHome + pmChildrensHome;
+                
+                const tmSchool = tmTotals.school || 0;
+                const pmSchool = pmTotals.school || 0;
+                const ttdSchool = tmSchool + pmSchool;
+                
+                const tmBudgetCovenantAfterEdu = tmBudgetCovenant - tmChildrensHome - tmSchool;
+                const pmBudgetCovenantAfterEdu = pmBudgetCovenant - pmChildrensHome - pmSchool;
+                const ttdBudgetCovenantAfterEdu = ttdBudgetCovenant - ttdChildrensHome - ttdSchool;
+                
+                // Church Operating Income (60%)
+                const tmChurchOperating = tmTotals.churchOperating || 0;
+                const pmChurchOperating = pmTotals.churchOperating || 0;
+                const ttdChurchOperating = tmChurchOperating + pmChurchOperating;
+                
+                // Get expense by category
+                const getExpenseByCategory = (category, expenseList) => {
+                    return expenseList.filter(e => 
+                        (e.category && e.category.toLowerCase().includes(category.toLowerCase())) || 
+                        (e.department && e.department.toLowerCase().includes(category.toLowerCase())) ||
+                        (e.description && e.description.toLowerCase().includes(category.toLowerCase()))
+                    ).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                };
+                
+                // Distribution of Funds calculations
+                const budgetCovenant60 = ttdChurchOperating;
+                const welfareBalance = allTimeTotals.welfare || 0;
+                const funeralBalance = allTimeTotals.funeral || 0;
+                const campBalance = allTimeTotals.camp || 0;
+                const specialProjectBalance = getProjectBalance('special') || (allTimeTotals.special_project || 0);
+                const churchBuildingBalance = getProjectBalance('building') || (allTimeTotals.church_building || 0);
+                const childrensHomeBalance = ttdChildrensHome;
+                const choirBalance = allTimeTotals.choir || 0;
+                
+                // Chequing account balance
+                const totalDeposits = deposits.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
+                const chequingBalance = totalDeposits - allTimeExpenseTotal;
+                
+                // Calculate church reserve as balancing figure
+                const distributionTotal = budgetCovenant60 + welfareBalance + funeralBalance + campBalance + 
+                    specialProjectBalance + churchBuildingBalance + childrensHomeBalance + choirBalance;
+                const representedByTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
+                const churchReserve = representedByTotal - distributionTotal;
+                
+                // Build spreadsheet data
+                const data = [];
+                
+                // Row 1: Header
+                data.push([`DIEGO MARTIN SDA                                            FINANCIAL STATEMENT FOR ${monthName.toUpperCase()}`]);
+                
+                // Row 2: Conference Funds Header
+                data.push(['CONFERENCE  FUNDS', 'THIS MONTH', 'PREVIOUS MONTHS', 'TOTAL TO DATE']);
+                
+                // Rows 3-8: Conference Fund Items
+                data.push(['Tithes', tmTotals.tithe || 0, pmTotals.tithe || 0, ttdTithe]);
+                data.push(['Sabbath School', tmTotals.sabbath_school || 0, pmTotals.sabbath_school || 0, ttdSabbathSchool]);
+                data.push(['Ingathering', tmTotals.ingathering || 0, pmTotals.ingathering || 0, ttdIngathering]);
+                data.push(['Nehemiah', tmTotals.nehemiah || 0, pmTotals.nehemiah || 0, ttdNehemiah]);
+                data.push(['Community Hospital', 0, 0, 0]);
+                data.push(['3ABN/Radio', tmTotals.radio_3abn || 0, pmTotals.radio_3abn || 0, ttd3ABN]);
+                
+                // Row 9: Sub Total
+                data.push(['Sub Total of Conference Funds', tmSubTotalConf, pmSubTotalConf, ttdSubTotalConf]);
+                
+                // Row 10: Empty
+                data.push([]);
+                
+                // Row 11-16: Church Contributions to Conference (40% calculation breakdown)
+                data.push(['Church Contributions to Conference']);
+                data.push(['Budget Covenant/Offerings', tmBudgetCovenant, pmBudgetCovenant, ttdBudgetCovenant]);
+                data.push(["less: Children's HOME", -tmChildrensHome, -pmChildrensHome, -ttdChildrensHome]);
+                data.push(['less: Contribution to School (Wesport)', -tmSchool, -pmSchool, -ttdSchool]);
+                data.push(['Budget Covenant after contribution', tmBudgetCovenantAfterEdu, pmBudgetCovenantAfterEdu, ttdBudgetCovenantAfterEdu]);
+                data.push(['40% of Total Church Offering to local Conference', tm40Percent, pm40Percent, ttd40Percent]);
+                
+                // Row 17: Total Conference Funds
+                data.push(['Total Conference Funds', tmTotalConf, pmTotalConf, ttdTotalConf]);
+                
+                // Row: Empty
+                data.push([]);
+                
+                // Church Funds Header
+                data.push(['CHURCH FUNDS']);
+                
+                // Church Fund Items (Budget Covenant breakdown already shown above in Conference section)
+                data.push(['Budget Covenant/Offerings', tmBudgetCovenant, pmBudgetCovenant, ttdBudgetCovenant]);
+                data.push(["less: Children's HOME", -tmChildrensHome, -pmChildrensHome, -ttdChildrensHome]);
+                data.push(['less: Contribution to School (Wesport)', -tmSchool, -pmSchool, -ttdSchool]);
+                data.push(['Budget Covenant after Education contribution', tmBudgetCovenantAfterEdu, pmBudgetCovenantAfterEdu, ttdBudgetCovenantAfterEdu]);
+                data.push(['Welfare', tmTotals.welfare || 0, pmTotals.welfare || 0, (tmTotals.welfare || 0) + (pmTotals.welfare || 0)]);
+                data.push(['Church Building Fund', tmTotals.church_building || 0, pmTotals.church_building || 0, (tmTotals.church_building || 0) + (pmTotals.church_building || 0)]);
+                data.push(['Contribution to School', tmTotals.school || 0, pmTotals.school || 0, ttdSchool]);
+                data.push(["Children's Home", tmChildrensHome, pmChildrensHome, ttdChildrensHome]);
+                data.push(['Choir', tmTotals.choir || 0, pmTotals.choir || 0, (tmTotals.choir || 0) + (pmTotals.choir || 0)]);
+                data.push(['Special Project', tmTotals.special_project || 0, pmTotals.special_project || 0, (tmTotals.special_project || 0) + (pmTotals.special_project || 0)]);
+                data.push(['Church Project', tmTotals.project || 0, pmTotals.project || 0, (tmTotals.project || 0) + (pmTotals.project || 0)]);
+                data.push(['Messages of Hope Radio', tmTotals.messages_of_hope || 0, pmTotals.messages_of_hope || 0, (tmTotals.messages_of_hope || 0) + (pmTotals.messages_of_hope || 0)]);
+                data.push(['Funeral Fund', tmTotals.funeral || 0, pmTotals.funeral || 0, (tmTotals.funeral || 0) + (pmTotals.funeral || 0)]);
+                data.push(['Ministry Fund', 0, 0, 0]);
+                data.push(['Camp', tmTotals.camp || 0, pmTotals.camp || 0, (tmTotals.camp || 0) + (pmTotals.camp || 0)]);
+                data.push(['Refunds', tmTotals.refunds || 0, pmTotals.refunds || 0, (tmTotals.refunds || 0) + (pmTotals.refunds || 0)]);
+                
+                // Row 33: Total Church Income
+                const tmTotalChurchIncome = tmTotals.totalChurchFund || 0;
+                const pmTotalChurchIncome = pmTotals.totalChurchFund || 0;
+                const ttdTotalChurchIncome = tmTotalChurchIncome + pmTotalChurchIncome;
+                data.push(['TOTAL CHURCH INCOME', tmTotalChurchIncome, pmTotalChurchIncome, ttdTotalChurchIncome]);
+                
+                // Row 34: Less 40%
+                data.push(['Less 40% to Local Conference', -tm40Percent, -pm40Percent, -ttd40Percent]);
+                
+                // Row 35: Total Church Operating Income
+                data.push(['TOTAL CHURCH OPERATING INCOME', tmChurchOperating, pmChurchOperating, ttdChurchOperating]);
+                
+                // Row 36: Empty
+                data.push([]);
+                
+                // Row 37: Expenditure Header
+                data.push(['EXPENDITURE']);
+                
+                // Expense Categories
+                const expenseCategories = [
+                    'Health', 'Health Workshop', 'Family Life', 'Education', 'Family Life Workshop',
+                    'Women Ministeries', 'Men Ministeries', 'Personal Ministries', 'Personal Ministries Dues',
+                    'Personal Ministries Workshop', 'Personal Ministeries (Baptismal Gifts)', 'Adventist Youth',
+                    'Digicel Phone', 'Sabbath School Training/workshop', 'Sabbath School', 'Children Ministeries',
+                    'Board Meeting Refreshments', 'Children Ministeries Workshop', 'Adventurer Club', 'Pathfinder Club',
+                    'Community Services (Senior Citizens Day)', 'Community Services Dues', 'Community Services Workshop',
+                    'Community Services Vouchers', 'Deaconry Vouchers', 'Clean-up Day', 'Soup Kitchen', 'Music',
+                    'Choristor Workshop', 'A/V Room', 'A/V Room Workshop', 'Church Clerk Workshop',
+                    'Communication', 'Stewardship', 'Prayer Coordinators/Worrior', 'Elders', 'Administration',
+                    'Elders Workshop', 'RI Teachers Stipend', 'Choir', 'Deaconry', 'Treasury'
                 ];
+                
+                expenseCategories.forEach(cat => {
+                    const tmExp = getExpenseByCategory(cat, monthExpenses);
+                    const pmExp = getExpenseByCategory(cat, prevMonthExpenses);
+                    const ttdExp = tmExp + pmExp;
+                    data.push([cat, tmExp, pmExp, ttdExp]);
+                });
+                
+                // Total Expenses
+                data.push(['TOTAL CHURCH  EXPENSES', thisMonthExpenseTotal, prevMonthExpenseTotal, thisMonthExpenseTotal + prevMonthExpenseTotal]);
+                
+                // Empty row
+                data.push([]);
+                
+                // Reconciliation
+                data.push(['Reconciliation  ']);
+                data.push(['Increase/Decrease', increaseDecrease]);
+                data.push(['Balance From Previous Month', parseFloat(prevBalance)]);
+                data.push([`Balance as at: ${monthEndDate}`, parseFloat(prevBalance) + increaseDecrease]);
+                
+                // Empty row
+                data.push([]);
+                
+                // Distribution of Funds section
+                data.push(['Distribution of Funds', '', 'Represented by ', '']);
+                data.push(['Budget Covenant-60% ', budgetCovenant60, '', '']);
+                data.push(['Church Reserve', churchReserve, 'Unit Trust', parseFloat(unitTrust)]);
+                data.push(['Land', 0, 'Chequing account', chequingBalance]);
+                data.push(['Welfare Fund', welfareBalance, 'Revolving Fund', parseFloat(revolvingFund)]);
+                data.push(['Funeral Fund ', funeralBalance, '', '']);
+                data.push(['Camp Fund', campBalance, '', '']);
+                data.push(['Special Project ', specialProjectBalance, '', '']);
+                data.push(['Church Building Fund', churchBuildingBalance, '', '']);
+                data.push(["Children's Home Fund", childrensHomeBalance, '', '']);
+                data.push(['Choir Fund', choirBalance, '', '']);
+                
+                const leftTotal = budgetCovenant60 + churchReserve + 0 + welfareBalance + funeralBalance + campBalance + 
+                    specialProjectBalance + churchBuildingBalance + childrensHomeBalance + choirBalance;
+                const rightTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
+                data.push(['Totals', leftTotal, '', rightTotal]);
+                
+                // Empty row
+                data.push([]);
+                
+                // Signature
+                data.push(['Treasurer: ', ' Pastor: Ps. Morgavy Gittens']);
+                data.push(['Date : ']);
+                
+                // Create workbook with formatting
                 const ws = XLSX.utils.aoa_to_sheet(data);
+                
+                // Set column widths
+                ws['!cols'] = [
+                    { wch: 55 },  // Column A
+                    { wch: 18 },  // Column B
+                    { wch: 20 },  // Column C
+                    { wch: 18 }   // Column D
+                ];
+                
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Financial Statement');
                 XLSX.writeFile(wb, `Financial_Statement_${month}.xlsx`);
@@ -1912,13 +2129,43 @@
                 <div className="space-y-4">
                     {/* Controls */}
                     <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4 no-print">
-                        <div className="flex flex-wrap gap-3 items-end">
-                            <div>
-                                <label className="text-xs text-slate-400 block mb-1">Month</label>
-                                <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                        <div className="flex flex-wrap gap-3 items-end justify-between">
+                            <div className="flex flex-wrap gap-3 items-end">
+                                <div>
+                                    <label className="text-xs text-slate-400 block mb-1">Month</label>
+                                    <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                                </div>
+                                <button onClick={exportFinancialStatement} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm">📥 Export Statement</button>
+                                <button onClick={() => window.print()} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🖨️ Print</button>
                             </div>
-                            <button onClick={exportToExcel} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm">📥 Export Excel</button>
-                            <button onClick={() => window.print()} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🖨️ Print</button>
+                        </div>
+                        
+                        {/* Distribution of Funds Settings */}
+                        <div className="mt-4 pt-4 border-t border-slate-700">
+                            <h4 className="text-xs text-slate-400 mb-2">Distribution of Funds Settings (for export)</h4>
+                            <div className="flex flex-wrap gap-4 items-end">
+                                <div>
+                                    <label className="text-xs text-slate-500 block mb-1">Unit Trust Balance</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={unitTrust} 
+                                        onChange={e => setUnitTrust(e.target.value)} 
+                                        className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-sm w-32 text-right"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-500 block mb-1">Revolving Fund Balance</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={revolvingFund} 
+                                        onChange={e => setRevolvingFund(e.target.value)} 
+                                        className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-sm w-32 text-right"
+                                    />
+                                </div>
+                                <button onClick={handleSaveBalance} className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-500">💾 Save Settings</button>
+                            </div>
                         </div>
                     </div>
 
@@ -1963,9 +2210,17 @@
                                                 <td className="text-right text-slate-400">{fmtCur(allTimeTotals[f.key])}</td>
                                             </tr>
                                         ))}
-                                        <tr className="font-bold"><td className="text-slate-300 py-1">Subtotal</td><td className="text-right text-emerald-400">{fmtCur(thisMonthTotals.totalConfFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalConfFund)}</td></tr>
-                                        <tr><td className="text-slate-400 py-1">+ 40% of Church</td><td className="text-right text-emerald-400">{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.percentage40)}</td></tr>
-                                        <tr className="font-bold bg-emerald-500/10"><td className="text-emerald-400 py-2">TOTAL TO CONFERENCE</td><td className="text-right text-emerald-400">{fmtCur(thisMonthTotals.grandTotalConference)}</td><td className="text-right text-emerald-300">{fmtCur(allTimeTotals.grandTotalConference)}</td></tr>
+                                        <tr className="font-bold border-t border-slate-600"><td className="text-slate-300 py-1">Sub Total Conference Funds</td><td className="text-right text-emerald-400">{fmtCur(thisMonthTotals.totalConfFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalConfFund)}</td></tr>
+                                        
+                                        {/* 40% Calculation Breakdown */}
+                                        <tr className="bg-slate-700/30"><td colSpan="3" className="text-xs text-amber-400 py-2 font-semibold">CHURCH CONTRIBUTIONS TO CONFERENCE (40%)</td></tr>
+                                        <tr><td className="text-slate-400 py-1 pl-4">Budget Covenant/Offerings</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.budget_covenant)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.budget_covenant)}</td></tr>
+                                        <tr><td className="text-red-400 py-1 pl-4">less: Children's HOME</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.pos_band)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.pos_band)}</td></tr>
+                                        <tr><td className="text-red-400 py-1 pl-4">less: Contribution to School (Wesport)</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.school)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.school)}</td></tr>
+                                        <tr className="border-t border-slate-600"><td className="text-slate-300 py-1 pl-4 font-medium">Budget Covenant after contribution</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.baseFor40_60 || 0)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.baseFor40_60 || 0)}</td></tr>
+                                        <tr><td className="text-amber-400 py-1 pl-4">40% of Total Church Offering</td><td className="text-right text-amber-400">{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-amber-300">{fmtCur(allTimeTotals.percentage40)}</td></tr>
+                                        
+                                        <tr className="font-bold bg-emerald-500/10"><td className="text-emerald-400 py-2">TOTAL CONFERENCE FUNDS</td><td className="text-right text-emerald-400">{fmtCur(thisMonthTotals.grandTotalConference)}</td><td className="text-right text-emerald-300">{fmtCur(allTimeTotals.grandTotalConference)}</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -1983,17 +2238,9 @@
                                                 <td className="text-right text-slate-400">{fmtCur(allTimeTotals[f.key])}</td>
                                             </tr>
                                         ))}
-                                        <tr className="font-bold"><td className="text-slate-300 py-1">Total Church Income</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.totalChurchFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalChurchFund)}</td></tr>
-                                        
-                                        {/* 40%/60% Breakdown */}
-                                        <tr className="bg-slate-700/30"><td colSpan="3" className="text-xs text-amber-400 py-2 font-semibold">40%/60% CALCULATION</td></tr>
-                                        <tr><td className="text-slate-400 py-1 pl-4">Budget Covenant</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.budget_covenant)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.budget_covenant)}</td></tr>
-                                        <tr><td className="text-red-400 py-1 pl-4">Less: Contribution to School (Tithe)</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.school)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.school)}</td></tr>
-                                        <tr><td className="text-red-400 py-1 pl-4">Less: Contribution to Children's Home</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.pos_band)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.pos_band)}</td></tr>
-                                        <tr><td className="text-red-400 py-1 pl-4">Less: School - Wesport (Expenses)</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.wesportExpenses || 0)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.wesportExpenses || 0)}</td></tr>
-                                        <tr className="border-t border-slate-600"><td className="text-slate-300 py-1 pl-4 font-medium">Net Amount for 40%/60%</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.baseFor40_60 || 0)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.baseFor40_60 || 0)}</td></tr>
-                                        <tr><td className="text-amber-400 py-1 pl-4">40% to Conference</td><td className="text-right text-amber-400">{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-amber-300">{fmtCur(allTimeTotals.percentage40)}</td></tr>
-                                        <tr className="font-bold bg-blue-500/10"><td className="text-blue-400 py-2 pl-4">60% CHURCH OPERATING</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.churchOperating)}</td><td className="text-right text-blue-300">{fmtCur(allTimeTotals.churchOperating)}</td></tr>
+                                        <tr className="font-bold border-t border-slate-600"><td className="text-slate-300 py-1">TOTAL CHURCH INCOME</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.totalChurchFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalChurchFund)}</td></tr>
+                                        <tr><td className="text-red-400 py-1">Less 40% to Local Conference</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.percentage40)}</td></tr>
+                                        <tr className="font-bold bg-blue-500/10"><td className="text-blue-400 py-2">TOTAL CHURCH OPERATING INCOME (60%)</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.churchOperating)}</td><td className="text-right text-blue-300">{fmtCur(allTimeTotals.churchOperating)}</td></tr>
                                     </tbody>
                                 </table>
                             </div>

@@ -1020,7 +1020,7 @@
 
                         {/* Expenses List */}
                         {view === 'expenses' && (
-                            <ExpenseListView expenses={expenses} canEdit={canEdit} setEditingItem={setEditingItem} setView={setView} setShowDeleteConfirm={setShowDeleteConfirm} />
+                            <ExpenseListView expenses={expenses} canEdit={canEdit} setEditingItem={setEditingItem} setView={setView} setShowDeleteConfirm={setShowDeleteConfirm} supabase={supabase} loadData={loadData} />
                         )}
 
                         {/* Expense Form */}
@@ -1263,10 +1263,20 @@
         }
 
         // Expense List Component with date range filtering and cheque status
-        function ExpenseListView({ expenses, canEdit, setEditingItem, setView, setShowDeleteConfirm }) {
+        function ExpenseListView({ expenses, canEdit, setEditingItem, setView, setShowDeleteConfirm, supabase, loadData }) {
             const [expStartDate, setExpStartDate] = useState(new Date().getFullYear() + '-01-01');
             const [expEndDate, setExpEndDate] = useState(new Date().toISOString().split('T')[0]);
             const [chequeFilter, setChequeFilter] = useState('all');
+            
+            const toggleChequeStatus = async (expense) => {
+                const newStatus = expense.cheque_status === 'Cashed' ? 'Uncashed' : 'Cashed';
+                try {
+                    await supabase.from('expenses').update({ cheque_status: newStatus }).eq('id', expense.id);
+                    loadData();
+                } catch (err) {
+                    alert('Error updating status: ' + err.message);
+                }
+            };
             
             const filtered = expenses.filter(e => {
                 const matchDate = e.date >= expStartDate && e.date <= expEndDate;
@@ -1350,9 +1360,9 @@
                                     <td className="px-3 py-2 text-slate-400">{e.cheque_number || '-'}</td>
                                     <td className="px-3 py-2 text-center">
                                         {e.cheque_number ? (
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                                                {e.cheque_status || 'Uncashed'}
-                                            </span>
+                                            <button onClick={() => canEdit && toggleChequeStatus(e)} className={`px-2 py-0.5 rounded-full text-xs font-medium ${canEdit ? 'cursor-pointer hover:opacity-80' : ''} ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`} title={canEdit ? 'Click to toggle Cashed/Uncashed' : ''}>
+                                                {e.cheque_status === 'Cashed' ? '✓ Cashed' : '○ Uncashed'}
+                                            </button>
                                         ) : <span className="text-slate-600">-</span>}
                                     </td>
                                     <td className="px-3 py-2 text-right text-red-400 font-semibold">{fmtCur(e.amount)}</td>

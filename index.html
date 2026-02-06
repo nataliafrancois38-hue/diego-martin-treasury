@@ -1866,9 +1866,10 @@
             const prevMonthEntries = titheEntries.filter(e => e.date >= yearStart && e.date <= prevMonthEndStr);
             const prevMonthExpenses = expenses.filter(e => e.date >= yearStart && e.date <= prevMonthEndStr);
 
-            const thisMonthTotals = calculateTitheTotals(monthEntries, monthExpenses);
-            const prevMonthTotals = calculateTitheTotals(prevMonthEntries, prevMonthExpenses);
-            const allTimeTotals = calculateTitheTotals(titheEntries, expenses);
+            const thisMonthTotals = calculateTitheTotals(monthEntries, monthExpenses, 1);
+            const [stmtYear, stmtMon] = month.split('-').map(Number);
+            const prevMonthTotals = calculateTitheTotals(prevMonthEntries, prevMonthExpenses, stmtMon - 1);
+            const allTimeTotals = calculateTitheTotals(titheEntries, expenses, stmtMon);
 
             const thisMonthExpenseTotal = monthExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const prevMonthExpenseTotal = prevMonthExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
@@ -1956,8 +1957,13 @@
                 const pmChildrensHome = pmTotals.pos_band || 0;
                 const ttdChildrensHome = tmChildrensHome + pmChildrensHome;
                 
-                const tmSchool = tmTotals.school || 0;
-                const pmSchool = pmTotals.school || 0;
+                // School contribution = tithe slip amount + fixed $5000/month
+                const FIXED_SCHOOL_MONTHLY = 5000;
+                const [selYear, selMon] = month.split('-').map(Number);
+                const tmMonthCount = 1; // this month is always 1 month
+                const pmMonthCount = selMon - 1; // previous months in the year
+                const tmSchool = (tmTotals.school || 0) + (FIXED_SCHOOL_MONTHLY * tmMonthCount);
+                const pmSchool = (pmTotals.school || 0) + (FIXED_SCHOOL_MONTHLY * pmMonthCount);
                 const ttdSchool = tmSchool + pmSchool;
                 
                 const tmBudgetCovenantAfterEdu = tmBudgetCovenant - tmChildrensHome - tmSchool;
@@ -2257,7 +2263,7 @@
                                         <tr className="bg-slate-700/30"><td colSpan="3" className="text-xs text-amber-400 py-2 font-semibold">CHURCH CONTRIBUTIONS TO CONFERENCE (40%)</td></tr>
                                         <tr><td className="text-slate-400 py-1 pl-4">Budget Covenant/Offerings</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.budget_covenant)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.budget_covenant)}</td></tr>
                                         <tr><td className="text-red-400 py-1 pl-4">less: Children's HOME</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.pos_band)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.pos_band)}</td></tr>
-                                        <tr><td className="text-red-400 py-1 pl-4">less: Contribution to School (Wesport)</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.school)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.school)}</td></tr>
+                                        <tr><td className="text-red-400 py-1 pl-4">less: Contribution to School (Wesport)</td><td className="text-right text-red-400">-{fmtCur((thisMonthTotals.school || 0) + (thisMonthTotals.fixedSchoolContribution || 0))}</td><td className="text-right text-red-300">-{fmtCur((allTimeTotals.school || 0) + (allTimeTotals.fixedSchoolContribution || 0))}</td></tr>
                                         <tr className="border-t border-slate-600"><td className="text-slate-300 py-1 pl-4 font-medium">Budget Covenant after contribution</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.baseFor40_60 || 0)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.baseFor40_60 || 0)}</td></tr>
                                         <tr><td className="text-amber-400 py-1 pl-4">40% of Total Church Offering</td><td className="text-right text-amber-400">{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-amber-300">{fmtCur(allTimeTotals.percentage40)}</td></tr>
                                         
@@ -3284,7 +3290,7 @@
                     thisYearWesport[dt.getMonth()] += parseFloat(e.amount) || 0;
                 }
             });
-            const thisYearIncome = thisYearBudgetCovenant.map((v, i) => (v - (thisYearSchool[i] || 0) - (thisYearChildrensHome[i] || 0) - (thisYearWesport[i] || 0)) * 0.6);
+            const thisYearIncome = thisYearBudgetCovenant.map((v, i) => (v - (thisYearSchool[i] || 0) - (thisYearChildrensHome[i] || 0) - (thisYearWesport[i] || 0) - 5000) * 0.6);
             const thisYearTithe = getMonthlyData(titheEntries, currentYear, 'tithe');
             const thisYearExpenses = getMonthlyExpenses(currentYear);
             const thisYearDeposits = getMonthlyDeposits(currentYear);
@@ -6043,8 +6049,9 @@
             );
         }
 
-        // Calculate totals helper
-        function calculateTitheTotals(entries, expenses = []) {
+        // Calculate totals helper - monthCount is how many months the entries span (for fixed monthly school contribution)
+        function calculateTitheTotals(entries, expenses = [], monthCount = 0) {
+            const FIXED_SCHOOL_MONTHLY = 5000;
             const totals = { totalReceived: 0, totalConfFund: 0, totalChurchFund: 0 };
             [...CONFERENCE_FIELDS, ...CHURCH_FIELDS].forEach(f => totals[f.key] = 0);
             entries.forEach(e => {
@@ -6060,8 +6067,13 @@
                 .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
             totals.wesportExpenses = wesportExpenses;
             
-            // 40%/60% is calculated on Budget Covenant MINUS School contributions, Children's Home, AND Wesport expenses
-            const baseFor40_60 = (totals.budget_covenant || 0) - (totals.school || 0) - (totals.pos_band || 0) - wesportExpenses;
+            // Fixed school contribution ($5000/month) added to school deduction
+            const fixedSchoolTotal = monthCount > 0 ? FIXED_SCHOOL_MONTHLY * monthCount : 0;
+            totals.fixedSchoolContribution = fixedSchoolTotal;
+            const totalSchoolDeduction = (totals.school || 0) + fixedSchoolTotal;
+            
+            // 40%/60% is calculated on Budget Covenant MINUS School contributions (tithe + fixed), Children's Home, AND Wesport expenses
+            const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0) - wesportExpenses;
             totals.baseFor40_60 = baseFor40_60;
             totals.percentage40 = baseFor40_60 * 0.4;
             totals.churchOperating = baseFor40_60 * 0.6;

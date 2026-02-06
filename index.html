@@ -1952,25 +1952,52 @@
                     ).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 };
                 
-                // Distribution of Funds calculations
-                const budgetCovenant60 = ttdChurchOperating;
-                const welfareBalance = allTimeTotals.welfare || 0;
-                const funeralBalance = allTimeTotals.funeral || 0;
-                const campBalance = allTimeTotals.camp || 0;
-                const specialProjectBalance = getProjectBalance('special') || (allTimeTotals.special_project || 0);
-                const churchBuildingBalance = getProjectBalance('building') || (allTimeTotals.church_building || 0);
-                const childrensHomeBalance = ttdChildrensHome;
-                const choirBalance = allTimeTotals.choir || 0;
+                // Distribution of Funds calculations - use actual project data
+                // Get all project balances (same as Fund Distribution Report)
+                const allProjects = projects || [];
+                const projectFunds = allProjects.map(p => {
+                    const openingBalance = parseFloat(p.opening_balance) || 0;
+                    let income = 0;
+                    titheEntries.forEach(t => {
+                        if (t.project_id === p.id) {
+                            income += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                        }
+                        if (t.project_links) {
+                            try {
+                                const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                                Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
+                                    if (linkedProjectId === p.id) {
+                                        income += parseFloat(t[fieldKey]) || 0;
+                                    }
+                                });
+                            } catch (e) { }
+                        }
+                    });
+                    const spent = expenses.filter(e => e.project_id === p.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    return {
+                        name: p.name,
+                        balance: openingBalance + income - spent
+                    };
+                });
+                const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
+                
+                // Church Operating Income (60%)
+                const churchOperatingIncome = allTimeTotals.churchOperating || 0;
+                
+                // Conference Funds to remit
+                const conferenceFunds = allTimeTotals.grandTotalConference || 0;
                 
                 // Chequing account balance
                 const totalDeposits = deposits.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
-                const chequingBalance = totalDeposits - allTimeExpenseTotal;
+                const totalExpensesAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                const chequingBalance = totalDeposits - totalExpensesAll;
                 
-                // Calculate church reserve as balancing figure
-                const distributionTotal = budgetCovenant60 + welfareBalance + funeralBalance + campBalance + 
-                    specialProjectBalance + churchBuildingBalance + childrensHomeBalance + choirBalance;
+                // Total Allocated Funds
+                const totalAllocatedFunds = totalProjectFunds + churchOperatingIncome + conferenceFunds;
+                
+                // Church Reserve = Represented By Total - All other funds (balancing figure)
                 const representedByTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
-                const churchReserve = representedByTotal - distributionTotal;
+                const churchReserve = representedByTotal - totalAllocatedFunds;
                 
                 // Build spreadsheet data
                 const data = [];
@@ -2086,19 +2113,19 @@
                 
                 // Distribution of Funds section
                 data.push(['Distribution of Funds', '', 'Represented by ', '']);
-                data.push(['Budget Covenant-60% ', budgetCovenant60, '', '']);
-                data.push(['Church Reserve', churchReserve, 'Unit Trust', parseFloat(unitTrust)]);
-                data.push(['Land', 0, 'Chequing account', chequingBalance]);
-                data.push(['Welfare Fund', welfareBalance, 'Revolving Fund', parseFloat(revolvingFund)]);
-                data.push(['Funeral Fund ', funeralBalance, '', '']);
-                data.push(['Camp Fund', campBalance, '', '']);
-                data.push(['Special Project ', specialProjectBalance, '', '']);
-                data.push(['Church Building Fund', churchBuildingBalance, '', '']);
-                data.push(["Children's Home Fund", childrensHomeBalance, '', '']);
-                data.push(['Choir Fund', choirBalance, '', '']);
                 
-                const leftTotal = budgetCovenant60 + churchReserve + 0 + welfareBalance + funeralBalance + campBalance + 
-                    specialProjectBalance + churchBuildingBalance + childrensHomeBalance + choirBalance;
+                // Add all project funds dynamically
+                projectFunds.forEach(p => {
+                    data.push([p.name, p.balance, '', '']);
+                });
+                data.push(['Total Project Funds', totalProjectFunds, '', '']);
+                data.push([]);
+                data.push(['Church Operating Income (60%)', churchOperatingIncome, 'Unit Trust', parseFloat(unitTrust)]);
+                data.push(['Conference Funds (to remit)', conferenceFunds, 'Chequing account', chequingBalance]);
+                data.push(['Church Reserve', churchReserve, 'Revolving Fund', parseFloat(revolvingFund)]);
+                data.push([]);
+                
+                const leftTotal = totalProjectFunds + churchOperatingIncome + conferenceFunds + churchReserve;
                 const rightTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
                 data.push(['Totals', leftTotal, '', rightTotal]);
                 

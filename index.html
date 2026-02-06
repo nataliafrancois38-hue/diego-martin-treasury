@@ -1009,139 +1009,9 @@
                         )}
 
                         {/* Tithe List */}
-                        {view === 'tithe' && (() => {
-                            const [titheStartDate, setTitheStartDate] = React.useState(new Date().getFullYear() + '-01-01');
-                            const [titheEndDate, setTitheEndDate] = React.useState(new Date().toISOString().split('T')[0]);
-                            const [titheMemberFilter, setTitheMemberFilter] = React.useState('');
-                            
-                            const filtered = titheEntries.filter(e => {
-                                const matchDate = e.date >= titheStartDate && e.date <= titheEndDate;
-                                const matchMember = !titheMemberFilter || e.name.toLowerCase().includes(titheMemberFilter.toLowerCase());
-                                return matchDate && matchMember;
-                            }).sort((a, b) => {
-                                if (a.date !== b.date) return b.date.localeCompare(a.date);
-                                return (parseInt(b.slip_number) || 0) - (parseInt(a.slip_number) || 0);
-                            });
-                            
-                            const totals = calculateTitheTotals(filtered, expenses.filter(e => e.date >= titheStartDate && e.date <= titheEndDate));
-                            
-                            return (
-                            <div className="space-y-3">
-                                {/* Date Range & Filters */}
-                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-3">
-                                    <div className="flex flex-wrap gap-3 items-end">
-                                        <div><label className="text-xs text-slate-400 block mb-1">From</label><input type="date" value={titheStartDate} onChange={e => setTitheStartDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
-                                        <div><label className="text-xs text-slate-400 block mb-1">To</label><input type="date" value={titheEndDate} onChange={e => setTitheEndDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
-                                        <div className="flex-1 min-w-[150px]"><label className="text-xs text-slate-400 block mb-1">Member</label><input type="text" placeholder="Filter by name..." value={titheMemberFilter} onChange={e => setTitheMemberFilter(e.target.value)} className="w-full px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
-                                        {canEdit && <button onClick={() => { setEditingItem(null); setView('tithe-entry'); }} className="px-3 py-2 bg-amber-500 text-slate-900 rounded-lg text-sm font-medium">+ New Entry</button>}
-                                    </div>
-                                </div>
-                                
-                                {/* Summary Cards */}
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                                    <div className="bg-gradient-to-br from-amber-500/20 to-transparent rounded-xl border border-amber-500/30 p-3">
-                                        <p className="text-xs text-slate-400">Total Received</p>
-                                        <p className="text-lg font-bold text-amber-400">{fmtCur(totals.totalReceived)}</p>
-                                        <p className="text-xs text-slate-500">{filtered.length} entries</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-emerald-500/20 to-transparent rounded-xl border border-emerald-500/30 p-3">
-                                        <p className="text-xs text-slate-400">Conference Funds</p>
-                                        <p className="text-lg font-bold text-emerald-400">{fmtCur(totals.grandTotalConference)}</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-cyan-500/20 to-transparent rounded-xl border border-cyan-500/30 p-3">
-                                        <p className="text-xs text-slate-400">Church Funds</p>
-                                        <p className="text-lg font-bold text-cyan-400">{fmtCur(totals.totalChurchFund)}</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-blue-500/20 to-transparent rounded-xl border border-blue-500/30 p-3">
-                                        <p className="text-xs text-slate-400">Church Income (60%)</p>
-                                        <p className="text-lg font-bold text-blue-400">{fmtCur(totals.churchOperating)}</p>
-                                    </div>
-                                </div>
-                                
-                                {/* Category Subtotals */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                    <div className="bg-slate-800/50 rounded-xl border border-emerald-500/30 p-3">
-                                        <h4 className="text-xs font-semibold text-emerald-400 mb-2">CONFERENCE FUNDS</h4>
-                                        <div className="space-y-1">
-                                            {CONFERENCE_FIELDS.map(f => (
-                                                <div key={f.key} className="flex justify-between text-sm">
-                                                    <span className="text-slate-400">{f.label}</span>
-                                                    <span className="text-white">{fmtCur(totals[f.key] || 0)}</span>
-                                                </div>
-                                            ))}
-                                            <div className="flex justify-between text-sm font-semibold pt-1 border-t border-slate-700">
-                                                <span className="text-slate-400">40% Church Offering</span>
-                                                <span className="text-amber-400">{fmtCur(totals.percentage40 || 0)}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm font-bold pt-1 border-t border-emerald-500/30">
-                                                <span className="text-emerald-400">Grand Total to Conference</span>
-                                                <span className="text-emerald-400">{fmtCur(totals.grandTotalConference)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="bg-slate-800/50 rounded-xl border border-cyan-500/30 p-3">
-                                        <h4 className="text-xs font-semibold text-cyan-400 mb-2">CHURCH FUNDS</h4>
-                                        <div className="space-y-1">
-                                            {CHURCH_FIELDS.map(f => (
-                                                <div key={f.key} className="flex justify-between text-sm">
-                                                    <span className="text-slate-400">{f.label}</span>
-                                                    <span className="text-white">{fmtCur(totals[f.key] || 0)}</span>
-                                                </div>
-                                            ))}
-                                            <div className="flex justify-between text-sm font-bold pt-1 border-t border-cyan-500/30">
-                                                <span className="text-cyan-400">Total Church Funds</span>
-                                                <span className="text-cyan-400">{fmtCur(totals.totalChurchFund)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Entries Table */}
-                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-                                    <table className="w-full text-sm">
-                                        <thead><tr className="border-b border-slate-700 bg-slate-800/50">
-                                            <th className="px-3 py-2 text-left text-amber-400">Date</th>
-                                            <th className="px-3 py-2 text-center text-amber-400">Slip #</th>
-                                            <th className="px-3 py-2 text-left text-amber-400">Name</th>
-                                            <th className="px-3 py-2 text-right text-amber-400">Tithe</th>
-                                            <th className="px-3 py-2 text-right text-amber-400">Total</th>
-                                            <th className="px-3 py-2 text-left text-amber-400">By</th>
-                                            <th className="px-3 py-2 text-center text-amber-400">Actions</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            {filtered.map(e => (
-                                                <tr key={e.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
-                                                    <td className="px-3 py-2 text-slate-300">{e.date}</td>
-                                                    <td className="px-3 py-2 text-center text-blue-400">{e.slip_number || '-'}</td>
-                                                    <td className="px-3 py-2 text-white">{e.name}</td>
-                                                    <td className="px-3 py-2 text-right text-emerald-400">{fmtCur(e.tithe)}</td>
-                                                    <td className="px-3 py-2 text-right text-amber-400 font-semibold">{fmtCur(e.total_received)}</td>
-                                                    <td className="px-3 py-2 text-slate-500 text-xs">{e.created_by_email?.split('@')[0]}</td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        {canEdit ? (
-                                                            <>
-                                                                <button onClick={() => { setEditingItem(e); setView('tithe-entry'); }} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs mr-1 hover:bg-blue-600">Edit</button>
-                                                                <button onClick={() => setShowDeleteConfirm({ type: 'tithe', id: e.id })} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs hover:bg-red-600">Del</button>
-                                                            </>
-                                                        ) : <span className="text-slate-500 text-xs">View only</span>}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {filtered.length === 0 && <tr><td colSpan="7" className="px-3 py-8 text-center text-slate-500">No entries in selected range</td></tr>}
-                                        </tbody>
-                                        {filtered.length > 0 && (
-                                            <tfoot><tr className="bg-slate-700/30 font-semibold">
-                                                <td colSpan="3" className="px-3 py-2 text-white">Totals ({filtered.length} entries)</td>
-                                                <td className="px-3 py-2 text-right text-emerald-400">{fmtCur(totals.tithe || 0)}</td>
-                                                <td className="px-3 py-2 text-right text-amber-400">{fmtCur(totals.totalReceived)}</td>
-                                                <td colSpan="2"></td>
-                                            </tr></tfoot>
-                                        )}
-                                    </table>
-                                </div>
-                            </div>
-                            );
-                        })()}
+                        {view === 'tithe' && (
+                            <TitheListView titheEntries={titheEntries} expenses={expenses} canEdit={canEdit} setEditingItem={setEditingItem} setView={setView} setShowDeleteConfirm={setShowDeleteConfirm} />
+                        )}
 
                         {/* Tithe Entry Form */}
                         {view === 'tithe-entry' && (
@@ -1149,132 +1019,9 @@
                         )}
 
                         {/* Expenses List */}
-                        {view === 'expenses' && (() => {
-                            const [expStartDate, setExpStartDate] = React.useState(new Date().getFullYear() + '-01-01');
-                            const [expEndDate, setExpEndDate] = React.useState(new Date().toISOString().split('T')[0]);
-                            const [chequeFilter, setChequeFilter] = React.useState('all'); // all, cashed, uncashed
-                            
-                            const filtered = expenses.filter(e => {
-                                const matchDate = e.date >= expStartDate && e.date <= expEndDate;
-                                const matchCheque = chequeFilter === 'all' || 
-                                    (chequeFilter === 'cashed' && e.cheque_status === 'Cashed') ||
-                                    (chequeFilter === 'uncashed' && e.cheque_number && e.cheque_status !== 'Cashed');
-                                return matchDate && matchCheque;
-                            });
-                            
-                            const total = filtered.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                            const chequeExpenses = expenses.filter(e => e.cheque_number && e.date >= expStartDate && e.date <= expEndDate);
-                            const cashedTotal = chequeExpenses.filter(e => e.cheque_status === 'Cashed').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                            const uncashedTotal = chequeExpenses.filter(e => e.cheque_status !== 'Cashed').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                            const cashedCount = chequeExpenses.filter(e => e.cheque_status === 'Cashed').length;
-                            const uncashedCount = chequeExpenses.filter(e => e.cheque_status !== 'Cashed').length;
-                            
-                            // Group by department
-                            const deptTotals = {};
-                            filtered.forEach(e => {
-                                const dept = e.department || 'Uncategorized';
-                                deptTotals[dept] = (deptTotals[dept] || 0) + (parseFloat(e.amount) || 0);
-                            });
-                            
-                            return (
-                            <div className="space-y-3">
-                                {/* Date Range & Filters */}
-                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-3">
-                                    <div className="flex flex-wrap gap-3 items-end">
-                                        <div><label className="text-xs text-slate-400 block mb-1">From</label><input type="date" value={expStartDate} onChange={e => setExpStartDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
-                                        <div><label className="text-xs text-slate-400 block mb-1">To</label><input type="date" value={expEndDate} onChange={e => setExpEndDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
-                                        <div>
-                                            <label className="text-xs text-slate-400 block mb-1">Cheque Status</label>
-                                            <select value={chequeFilter} onChange={e => setChequeFilter(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm">
-                                                <option value="all">All Expenses</option>
-                                                <option value="cashed">Cashed Cheques</option>
-                                                <option value="uncashed">Uncashed Cheques</option>
-                                            </select>
-                                        </div>
-                                        {canEdit && <button onClick={() => { setEditingItem(null); setView('expense-entry'); }} className="px-3 py-2 bg-red-500 text-white rounded-lg text-sm font-medium">+ New Expense</button>}
-                                    </div>
-                                </div>
-                                
-                                {/* Summary Cards */}
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                                    <div className="bg-gradient-to-br from-red-500/20 to-transparent rounded-xl border border-red-500/30 p-3">
-                                        <p className="text-xs text-slate-400">Total Expenses</p>
-                                        <p className="text-lg font-bold text-red-400">{fmtCur(total)}</p>
-                                        <p className="text-xs text-slate-500">{filtered.length} payments</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-amber-500/20 to-transparent rounded-xl border border-amber-500/30 p-3">
-                                        <p className="text-xs text-slate-400">Departments</p>
-                                        <p className="text-lg font-bold text-amber-400">{Object.keys(deptTotals).length}</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-emerald-500/20 to-transparent rounded-xl border border-emerald-500/30 p-3 cursor-pointer hover:border-emerald-400" onClick={() => setChequeFilter('cashed')}>
-                                        <p className="text-xs text-slate-400">Cashed Cheques</p>
-                                        <p className="text-lg font-bold text-emerald-400">{fmtCur(cashedTotal)}</p>
-                                        <p className="text-xs text-slate-500">{cashedCount} cheques</p>
-                                    </div>
-                                    <div className="bg-gradient-to-br from-orange-500/20 to-transparent rounded-xl border border-orange-500/30 p-3 cursor-pointer hover:border-orange-400" onClick={() => setChequeFilter('uncashed')}>
-                                        <p className="text-xs text-slate-400">Uncashed Cheques</p>
-                                        <p className="text-lg font-bold text-orange-400">{fmtCur(uncashedTotal)}</p>
-                                        <p className="text-xs text-slate-500">{uncashedCount} cheques</p>
-                                    </div>
-                                </div>
-
-                                {/* Expenses Table */}
-                                <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-                                    <table className="w-full text-sm">
-                                        <thead><tr className="border-b border-slate-700 bg-slate-800/50">
-                                            <th className="px-3 py-2 text-left text-red-400">Date</th>
-                                            <th className="px-3 py-2 text-left text-red-400">Description</th>
-                                            <th className="px-3 py-2 text-left text-red-400">Department</th>
-                                            <th className="px-3 py-2 text-left text-red-400">Cheque #</th>
-                                            <th className="px-3 py-2 text-center text-red-400">Status</th>
-                                            <th className="px-3 py-2 text-right text-red-400">Amount</th>
-                                            <th className="px-3 py-2 text-center text-red-400">📎</th>
-                                            <th className="px-3 py-2 text-center text-red-400">Actions</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            {filtered.map(e => (
-                                                <tr key={e.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
-                                                    <td className="px-3 py-2 text-slate-300">{e.date}</td>
-                                                    <td className="px-3 py-2 text-white">{e.description}</td>
-                                                    <td className="px-3 py-2 text-slate-400">{e.department || '-'}</td>
-                                                    <td className="px-3 py-2 text-slate-400">{e.cheque_number || '-'}</td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        {e.cheque_number ? (
-                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                                                                {e.cheque_status || 'Uncashed'}
-                                                            </span>
-                                                        ) : <span className="text-slate-600">-</span>}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-right text-red-400 font-semibold">{fmtCur(e.amount)}</td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        {e.attachment_url ? (
-                                                            <a href={e.attachment_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300" title="View attachment">📄</a>
-                                                        ) : '-'}
-                                                    </td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        {canEdit ? (
-                                                            <>
-                                                                <button onClick={() => { setEditingItem(e); setView('expense-entry'); }} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs mr-1 hover:bg-blue-600">Edit</button>
-                                                                <button onClick={() => setShowDeleteConfirm({ type: 'expense', id: e.id })} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs hover:bg-red-600">Del</button>
-                                                            </>
-                                                        ) : <span className="text-slate-500 text-xs">View only</span>}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {filtered.length === 0 && <tr><td colSpan="8" className="px-3 py-8 text-center text-slate-500">No expenses in selected range</td></tr>}
-                                        </tbody>
-                                        {filtered.length > 0 && (
-                                            <tfoot><tr className="bg-slate-700/30 font-semibold">
-                                                <td colSpan="5" className="px-3 py-2 text-white">Total ({filtered.length} expenses)</td>
-                                                <td className="px-3 py-2 text-right text-red-400">{fmtCur(total)}</td>
-                                                <td colSpan="2"></td>
-                                            </tr></tfoot>
-                                        )}
-                                    </table>
-                                </div>
-                            </div>
-                            );
-                        })()}
+                        {view === 'expenses' && (
+                            <ExpenseListView expenses={expenses} canEdit={canEdit} setEditingItem={setEditingItem} setView={setView} setShowDeleteConfirm={setShowDeleteConfirm} />
+                        )}
 
                         {/* Expense Form */}
                         {view === 'expense-entry' && (
@@ -1384,6 +1131,261 @@
         }
 
         // Tithe Form Component
+        // Tithe List Component with date range filtering
+        function TitheListView({ titheEntries, expenses, canEdit, setEditingItem, setView, setShowDeleteConfirm }) {
+            const [titheStartDate, setTitheStartDate] = useState(new Date().getFullYear() + '-01-01');
+            const [titheEndDate, setTitheEndDate] = useState(new Date().toISOString().split('T')[0]);
+            const [titheMemberFilter, setTitheMemberFilter] = useState('');
+            
+            const filtered = titheEntries.filter(e => {
+                const matchDate = e.date >= titheStartDate && e.date <= titheEndDate;
+                const matchMember = !titheMemberFilter || e.name.toLowerCase().includes(titheMemberFilter.toLowerCase());
+                return matchDate && matchMember;
+            }).sort((a, b) => {
+                if (a.date !== b.date) return b.date.localeCompare(a.date);
+                return (parseInt(b.slip_number) || 0) - (parseInt(a.slip_number) || 0);
+            });
+            
+            const totals = calculateTitheTotals(filtered, expenses.filter(e => e.date >= titheStartDate && e.date <= titheEndDate));
+            
+            return (
+            <div className="space-y-3">
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-3">
+                    <div className="flex flex-wrap gap-3 items-end">
+                        <div><label className="text-xs text-slate-400 block mb-1">From</label><input type="date" value={titheStartDate} onChange={e => setTitheStartDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
+                        <div><label className="text-xs text-slate-400 block mb-1">To</label><input type="date" value={titheEndDate} onChange={e => setTitheEndDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
+                        <div className="flex-1 min-w-[150px]"><label className="text-xs text-slate-400 block mb-1">Member</label><input type="text" placeholder="Filter by name..." value={titheMemberFilter} onChange={e => setTitheMemberFilter(e.target.value)} className="w-full px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
+                        {canEdit && <button onClick={() => { setEditingItem(null); setView('tithe-entry'); }} className="px-3 py-2 bg-amber-500 text-slate-900 rounded-lg text-sm font-medium">+ New Entry</button>}
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div className="bg-gradient-to-br from-amber-500/20 to-transparent rounded-xl border border-amber-500/30 p-3">
+                        <p className="text-xs text-slate-400">Total Received</p>
+                        <p className="text-lg font-bold text-amber-400">{fmtCur(totals.totalReceived)}</p>
+                        <p className="text-xs text-slate-500">{filtered.length} entries</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-500/20 to-transparent rounded-xl border border-emerald-500/30 p-3">
+                        <p className="text-xs text-slate-400">Conference Funds</p>
+                        <p className="text-lg font-bold text-emerald-400">{fmtCur(totals.grandTotalConference)}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-cyan-500/20 to-transparent rounded-xl border border-cyan-500/30 p-3">
+                        <p className="text-xs text-slate-400">Church Funds</p>
+                        <p className="text-lg font-bold text-cyan-400">{fmtCur(totals.totalChurchFund)}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-blue-500/20 to-transparent rounded-xl border border-blue-500/30 p-3">
+                        <p className="text-xs text-slate-400">Church Income (60%)</p>
+                        <p className="text-lg font-bold text-blue-400">{fmtCur(totals.churchOperating)}</p>
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <div className="bg-slate-800/50 rounded-xl border border-emerald-500/30 p-3">
+                        <h4 className="text-xs font-semibold text-emerald-400 mb-2">CONFERENCE FUNDS</h4>
+                        <div className="space-y-1">
+                            {CONFERENCE_FIELDS.map(f => (
+                                <div key={f.key} className="flex justify-between text-sm">
+                                    <span className="text-slate-400">{f.label}</span>
+                                    <span className="text-white">{fmtCur(totals[f.key] || 0)}</span>
+                                </div>
+                            ))}
+                            <div className="flex justify-between text-sm font-semibold pt-1 border-t border-slate-700">
+                                <span className="text-slate-400">40% Church Offering</span>
+                                <span className="text-amber-400">{fmtCur(totals.percentage40 || 0)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm font-bold pt-1 border-t border-emerald-500/30">
+                                <span className="text-emerald-400">Grand Total to Conference</span>
+                                <span className="text-emerald-400">{fmtCur(totals.grandTotalConference)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-slate-800/50 rounded-xl border border-cyan-500/30 p-3">
+                        <h4 className="text-xs font-semibold text-cyan-400 mb-2">CHURCH FUNDS</h4>
+                        <div className="space-y-1">
+                            {CHURCH_FIELDS.map(f => (
+                                <div key={f.key} className="flex justify-between text-sm">
+                                    <span className="text-slate-400">{f.label}</span>
+                                    <span className="text-white">{fmtCur(totals[f.key] || 0)}</span>
+                                </div>
+                            ))}
+                            <div className="flex justify-between text-sm font-bold pt-1 border-t border-cyan-500/30">
+                                <span className="text-cyan-400">Total Church Funds</span>
+                                <span className="text-cyan-400">{fmtCur(totals.totalChurchFund)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                    <table className="w-full text-sm">
+                        <thead><tr className="border-b border-slate-700 bg-slate-800/50">
+                            <th className="px-3 py-2 text-left text-amber-400">Date</th>
+                            <th className="px-3 py-2 text-center text-amber-400">Slip #</th>
+                            <th className="px-3 py-2 text-left text-amber-400">Name</th>
+                            <th className="px-3 py-2 text-right text-amber-400">Tithe</th>
+                            <th className="px-3 py-2 text-right text-amber-400">Total</th>
+                            <th className="px-3 py-2 text-left text-amber-400">By</th>
+                            <th className="px-3 py-2 text-center text-amber-400">Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            {filtered.map(e => (
+                                <tr key={e.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                    <td className="px-3 py-2 text-slate-300">{e.date}</td>
+                                    <td className="px-3 py-2 text-center text-blue-400">{e.slip_number || '-'}</td>
+                                    <td className="px-3 py-2 text-white">{e.name}</td>
+                                    <td className="px-3 py-2 text-right text-emerald-400">{fmtCur(e.tithe)}</td>
+                                    <td className="px-3 py-2 text-right text-amber-400 font-semibold">{fmtCur(e.total_received)}</td>
+                                    <td className="px-3 py-2 text-slate-500 text-xs">{e.created_by_email?.split('@')[0]}</td>
+                                    <td className="px-3 py-2 text-center">
+                                        {canEdit ? (
+                                            <>
+                                                <button onClick={() => { setEditingItem(e); setView('tithe-entry'); }} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs mr-1 hover:bg-blue-600">Edit</button>
+                                                <button onClick={() => setShowDeleteConfirm({ type: 'tithe', id: e.id })} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs hover:bg-red-600">Del</button>
+                                            </>
+                                        ) : <span className="text-slate-500 text-xs">View only</span>}
+                                    </td>
+                                </tr>
+                            ))}
+                            {filtered.length === 0 && <tr><td colSpan="7" className="px-3 py-8 text-center text-slate-500">No entries in selected range</td></tr>}
+                        </tbody>
+                        {filtered.length > 0 && (
+                            <tfoot><tr className="bg-slate-700/30 font-semibold">
+                                <td colSpan="3" className="px-3 py-2 text-white">Totals ({filtered.length} entries)</td>
+                                <td className="px-3 py-2 text-right text-emerald-400">{fmtCur(totals.tithe || 0)}</td>
+                                <td className="px-3 py-2 text-right text-amber-400">{fmtCur(totals.totalReceived)}</td>
+                                <td colSpan="2"></td>
+                            </tr></tfoot>
+                        )}
+                    </table>
+                </div>
+            </div>
+            );
+        }
+
+        // Expense List Component with date range filtering and cheque status
+        function ExpenseListView({ expenses, canEdit, setEditingItem, setView, setShowDeleteConfirm }) {
+            const [expStartDate, setExpStartDate] = useState(new Date().getFullYear() + '-01-01');
+            const [expEndDate, setExpEndDate] = useState(new Date().toISOString().split('T')[0]);
+            const [chequeFilter, setChequeFilter] = useState('all');
+            
+            const filtered = expenses.filter(e => {
+                const matchDate = e.date >= expStartDate && e.date <= expEndDate;
+                const matchCheque = chequeFilter === 'all' || 
+                    (chequeFilter === 'cashed' && e.cheque_status === 'Cashed') ||
+                    (chequeFilter === 'uncashed' && e.cheque_number && e.cheque_status !== 'Cashed');
+                return matchDate && matchCheque;
+            });
+            
+            const total = filtered.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            const chequeExpenses = expenses.filter(e => e.cheque_number && e.date >= expStartDate && e.date <= expEndDate);
+            const cashedTotal = chequeExpenses.filter(e => e.cheque_status === 'Cashed').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            const uncashedTotal = chequeExpenses.filter(e => e.cheque_status !== 'Cashed').reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            const cashedCount = chequeExpenses.filter(e => e.cheque_status === 'Cashed').length;
+            const uncashedCount = chequeExpenses.filter(e => e.cheque_status !== 'Cashed').length;
+            
+            const deptTotals = {};
+            filtered.forEach(e => {
+                const dept = e.department || 'Uncategorized';
+                deptTotals[dept] = (deptTotals[dept] || 0) + (parseFloat(e.amount) || 0);
+            });
+            
+            return (
+            <div className="space-y-3">
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-3">
+                    <div className="flex flex-wrap gap-3 items-end">
+                        <div><label className="text-xs text-slate-400 block mb-1">From</label><input type="date" value={expStartDate} onChange={e => setExpStartDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
+                        <div><label className="text-xs text-slate-400 block mb-1">To</label><input type="date" value={expEndDate} onChange={e => setExpEndDate(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" /></div>
+                        <div>
+                            <label className="text-xs text-slate-400 block mb-1">Cheque Status</label>
+                            <select value={chequeFilter} onChange={e => setChequeFilter(e.target.value)} className="px-2 py-1.5 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm">
+                                <option value="all">All Expenses</option>
+                                <option value="cashed">Cashed Cheques</option>
+                                <option value="uncashed">Uncashed Cheques</option>
+                            </select>
+                        </div>
+                        {canEdit && <button onClick={() => { setEditingItem(null); setView('expense-entry'); }} className="px-3 py-2 bg-red-500 text-white rounded-lg text-sm font-medium">+ New Expense</button>}
+                    </div>
+                </div>
+                
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div className="bg-gradient-to-br from-red-500/20 to-transparent rounded-xl border border-red-500/30 p-3">
+                        <p className="text-xs text-slate-400">Total Expenses</p>
+                        <p className="text-lg font-bold text-red-400">{fmtCur(total)}</p>
+                        <p className="text-xs text-slate-500">{filtered.length} payments</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-amber-500/20 to-transparent rounded-xl border border-amber-500/30 p-3">
+                        <p className="text-xs text-slate-400">Departments</p>
+                        <p className="text-lg font-bold text-amber-400">{Object.keys(deptTotals).length}</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-500/20 to-transparent rounded-xl border border-emerald-500/30 p-3 cursor-pointer hover:border-emerald-400" onClick={() => setChequeFilter('cashed')}>
+                        <p className="text-xs text-slate-400">Cashed Cheques</p>
+                        <p className="text-lg font-bold text-emerald-400">{fmtCur(cashedTotal)}</p>
+                        <p className="text-xs text-slate-500">{cashedCount} cheques</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-orange-500/20 to-transparent rounded-xl border border-orange-500/30 p-3 cursor-pointer hover:border-orange-400" onClick={() => setChequeFilter('uncashed')}>
+                        <p className="text-xs text-slate-400">Uncashed Cheques</p>
+                        <p className="text-lg font-bold text-orange-400">{fmtCur(uncashedTotal)}</p>
+                        <p className="text-xs text-slate-500">{uncashedCount} cheques</p>
+                    </div>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+                    <table className="w-full text-sm">
+                        <thead><tr className="border-b border-slate-700 bg-slate-800/50">
+                            <th className="px-3 py-2 text-left text-red-400">Date</th>
+                            <th className="px-3 py-2 text-left text-red-400">Description</th>
+                            <th className="px-3 py-2 text-left text-red-400">Department</th>
+                            <th className="px-3 py-2 text-left text-red-400">Cheque #</th>
+                            <th className="px-3 py-2 text-center text-red-400">Status</th>
+                            <th className="px-3 py-2 text-right text-red-400">Amount</th>
+                            <th className="px-3 py-2 text-center text-red-400">📎</th>
+                            <th className="px-3 py-2 text-center text-red-400">Actions</th>
+                        </tr></thead>
+                        <tbody>
+                            {filtered.map(e => (
+                                <tr key={e.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                    <td className="px-3 py-2 text-slate-300">{e.date}</td>
+                                    <td className="px-3 py-2 text-white">{e.description}</td>
+                                    <td className="px-3 py-2 text-slate-400">{e.department || '-'}</td>
+                                    <td className="px-3 py-2 text-slate-400">{e.cheque_number || '-'}</td>
+                                    <td className="px-3 py-2 text-center">
+                                        {e.cheque_number ? (
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                                                {e.cheque_status || 'Uncashed'}
+                                            </span>
+                                        ) : <span className="text-slate-600">-</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-red-400 font-semibold">{fmtCur(e.amount)}</td>
+                                    <td className="px-3 py-2 text-center">
+                                        {e.attachment_url ? (
+                                            <a href={e.attachment_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300" title="View attachment">📄</a>
+                                        ) : '-'}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                        {canEdit ? (
+                                            <>
+                                                <button onClick={() => { setEditingItem(e); setView('expense-entry'); }} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs mr-1 hover:bg-blue-600">Edit</button>
+                                                <button onClick={() => setShowDeleteConfirm({ type: 'expense', id: e.id })} className="px-2 py-1 rounded bg-slate-700 text-slate-300 text-xs hover:bg-red-600">Del</button>
+                                            </>
+                                        ) : <span className="text-slate-500 text-xs">View only</span>}
+                                    </td>
+                                </tr>
+                            ))}
+                            {filtered.length === 0 && <tr><td colSpan="8" className="px-3 py-8 text-center text-slate-500">No expenses in selected range</td></tr>}
+                        </tbody>
+                        {filtered.length > 0 && (
+                            <tfoot><tr className="bg-slate-700/30 font-semibold">
+                                <td colSpan="5" className="px-3 py-2 text-white">Total ({filtered.length} expenses)</td>
+                                <td className="px-3 py-2 text-right text-red-400">{fmtCur(total)}</td>
+                                <td colSpan="2"></td>
+                            </tr></tfoot>
+                        )}
+                    </table>
+                </div>
+            </div>
+            );
+        }
+
         function TitheForm({ onSubmit, onCancel, initialData, titheEntries, projects }) {
             // Calculate next slip number for a given date
             const getNextSlipForDate = (date) => {

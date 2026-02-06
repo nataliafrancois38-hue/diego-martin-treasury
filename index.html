@@ -2099,27 +2099,14 @@
                 data.push([]);
                 
                 // Row 37: Expenditure Header
-                data.push(['EXPENDITURE']);
+                data.push(['EXPENDITURE', 'THIS MONTH', 'PREVIOUS MONTHS', 'TOTAL TO DATE']);
                 
-                // Expense Categories
-                const expenseCategories = [
-                    'Health', 'Health Workshop', 'Family Life', 'Education', 'Family Life Workshop',
-                    'Women Ministeries', 'Men Ministeries', 'Personal Ministries', 'Personal Ministries Dues',
-                    'Personal Ministries Workshop', 'Personal Ministeries (Baptismal Gifts)', 'Adventist Youth',
-                    'Digicel Phone', 'Sabbath School Training/workshop', 'Sabbath School', 'Children Ministeries',
-                    'Board Meeting Refreshments', 'Children Ministeries Workshop', 'Adventurer Club', 'Pathfinder Club',
-                    'Community Services (Senior Citizens Day)', 'Community Services Dues', 'Community Services Workshop',
-                    'Community Services Vouchers', 'Deaconry Vouchers', 'Clean-up Day', 'Soup Kitchen', 'Music',
-                    'Choristor Workshop', 'A/V Room', 'A/V Room Workshop', 'Church Clerk Workshop',
-                    'Communication', 'Stewardship', 'Prayer Coordinators/Worrior', 'Elders', 'Administration',
-                    'Elders Workshop', 'RI Teachers Stipend', 'Choir', 'Deaconry', 'Treasury'
-                ];
-                
-                expenseCategories.forEach(cat => {
-                    const tmExp = getExpenseByCategory(cat, monthExpenses);
-                    const pmExp = getExpenseByCategory(cat, prevMonthExpenses);
-                    const ttdExp = tmExp + pmExp;
-                    data.push([cat, tmExp, pmExp, ttdExp]);
+                // List all departments with summed totals for this month
+                EXPENSE_CATEGORIES.forEach(dept => {
+                    if (!dept) return; // skip empty
+                    const tmExp = monthExpenses.filter(e => e.department === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                    const pmExp = prevMonthExpenses.filter(e => e.department === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                    data.push([dept, tmExp, pmExp, tmExp + pmExp]);
                 });
                 
                 // Total Expenses
@@ -2130,9 +2117,10 @@
                 
                 // Reconciliation
                 data.push(['Reconciliation  ']);
-                data.push(['Increase/Decrease', increaseDecrease]);
                 data.push(['Balance From Previous Month', parseFloat(prevBalance)]);
-                data.push([`Balance as at: ${monthEndDate}`, parseFloat(prevBalance) + increaseDecrease]);
+                data.push(['Add: Church Operating Income (60%)', tmChurchOperating]);
+                data.push(['Less: Total Church Expenses', -thisMonthExpenseTotal]);
+                data.push([`Balance as at: ${monthEndDate}`, parseFloat(prevBalance) + tmChurchOperating - thisMonthExpenseTotal]);
                 
                 // Empty row
                 data.push([]);
@@ -3288,7 +3276,15 @@
             const thisYearBudgetCovenant = getMonthlyData(titheEntries, currentYear, 'budget_covenant');
             const thisYearSchool = getMonthlyData(titheEntries, currentYear, 'school');
             const thisYearChildrensHome = getMonthlyData(titheEntries, currentYear, 'pos_band');
-            const thisYearIncome = thisYearBudgetCovenant.map((v, i) => (v - (thisYearSchool[i] || 0) - (thisYearChildrensHome[i] || 0)) * 0.6);
+            // Wesport expenses by month
+            const thisYearWesport = Array(12).fill(0);
+            expenses.forEach(e => {
+                const dt = new Date(e.date);
+                if (dt.getFullYear() === currentYear && (e.category === 'School - Wesport' || e.department === 'School - Wesport')) {
+                    thisYearWesport[dt.getMonth()] += parseFloat(e.amount) || 0;
+                }
+            });
+            const thisYearIncome = thisYearBudgetCovenant.map((v, i) => (v - (thisYearSchool[i] || 0) - (thisYearChildrensHome[i] || 0) - (thisYearWesport[i] || 0)) * 0.6);
             const thisYearTithe = getMonthlyData(titheEntries, currentYear, 'tithe');
             const thisYearExpenses = getMonthlyExpenses(currentYear);
             const thisYearDeposits = getMonthlyDeposits(currentYear);

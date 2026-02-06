@@ -1854,10 +1854,11 @@
             const endBalance = parseFloat(prevBalance) + depositTotal - confFundPayment - thisMonthExpenseTotal;
             const increaseDecrease = thisMonthTotals.churchOperating - thisMonthExpenseTotal;
 
-            const monthName = new Date(month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-            const monthDate = new Date(month + '-01');
-            const lastDayOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
-            const monthEndDate = `${monthDate.toLocaleDateString('en-US', { month: 'long' })} ${lastDayOfMonth}${lastDayOfMonth === 1 ? 'st' : lastDayOfMonth === 2 ? 'nd' : lastDayOfMonth === 3 ? 'rd' : 'th'} ${monthDate.getFullYear()}`;
+            // Parse month properly to avoid timezone issues
+            const [selectedYear, selectedMonth] = month.split('-').map(Number);
+            const monthName = new Date(selectedYear, selectedMonth - 1, 15).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+            const monthEndDate = `${new Date(selectedYear, selectedMonth - 1, 15).toLocaleDateString('en-US', { month: 'long' })} ${lastDayOfMonth}${lastDayOfMonth === 1 ? 'st' : lastDayOfMonth === 2 ? 'nd' : lastDayOfMonth === 3 ? 'rd' : 'th'} ${selectedYear}`;
 
             const handleSaveBalance = async () => {
                 const newSettings = { 

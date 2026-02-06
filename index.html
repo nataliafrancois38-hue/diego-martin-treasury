@@ -1352,7 +1352,7 @@
 
                         {/* Reports */}
                         {view === 'reports' && (
-                            <ReportsSection titheEntries={titheEntries} expenses={expenses} deposits={deposits} cheques={cheques} projects={projects} />
+                            <ReportsSection titheEntries={titheEntries} expenses={expenses} deposits={deposits} cheques={cheques} projects={projects} settings={settings} />
                         )}
 
                         {/* Financial Statement */}
@@ -4398,7 +4398,7 @@
         }
 
         // Reports Section Component
-        function ReportsSection({ titheEntries, expenses, deposits, cheques, projects }) {
+        function ReportsSection({ titheEntries, expenses, deposits, cheques, projects, settings }) {
             const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]);
             const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
             const [memberFilter, setMemberFilter] = useState('');

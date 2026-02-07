@@ -1922,70 +1922,40 @@
                 return openingBalance + income - spent;
             };
 
-            // Export Financial Statement in exact format
+            // Export Financial Statement in exact format matching template
             const exportFinancialStatement = () => {
                 // Calculate totals for this month and previous months
                 const tmTotals = thisMonthTotals;
                 const pmTotals = prevMonthTotals;
                 
-                // Total to date = this month + previous months
-                const ttdTithe = (tmTotals.tithe || 0) + (pmTotals.tithe || 0);
-                const ttdSabbathSchool = (tmTotals.sabbath_school || 0) + (pmTotals.sabbath_school || 0);
-                const ttdIngathering = (tmTotals.ingathering || 0) + (pmTotals.ingathering || 0);
-                const ttdNehemiah = (tmTotals.nehemiah || 0) + (pmTotals.nehemiah || 0);
-                const ttdCommunityHospital = 0; // Add if you have this field
-                const ttd3ABN = (tmTotals.radio_3abn || 0) + (pmTotals.radio_3abn || 0);
-                const tmSubTotalConf = (tmTotals.tithe || 0) + (tmTotals.sabbath_school || 0) + (tmTotals.ingathering || 0) + (tmTotals.nehemiah || 0) + (tmTotals.radio_3abn || 0);
-                const pmSubTotalConf = (pmTotals.tithe || 0) + (pmTotals.sabbath_school || 0) + (pmTotals.ingathering || 0) + (pmTotals.nehemiah || 0) + (pmTotals.radio_3abn || 0);
-                const ttdSubTotalConf = tmSubTotalConf + pmSubTotalConf;
-                
-                // 40% calculation
-                const tm40Percent = tmTotals.percentage40 || 0;
-                const pm40Percent = pmTotals.percentage40 || 0;
-                const ttd40Percent = tm40Percent + pm40Percent;
-                
-                const tmTotalConf = tmSubTotalConf + tm40Percent;
-                const pmTotalConf = pmSubTotalConf + pm40Percent;
-                const ttdTotalConf = ttdSubTotalConf + ttd40Percent;
-                
-                // Church Funds
+                // Church Funds values
                 const tmBudgetCovenant = tmTotals.budget_covenant || 0;
                 const pmBudgetCovenant = pmTotals.budget_covenant || 0;
-                const ttdBudgetCovenant = tmBudgetCovenant + pmBudgetCovenant;
-                
                 const tmChildrensHome = tmTotals.pos_band || 0;
                 const pmChildrensHome = pmTotals.pos_band || 0;
-                const ttdChildrensHome = tmChildrensHome + pmChildrensHome;
+                const tmSchoolContrib = (tmTotals.school || 0) + (tmTotals.fixedSchoolContribution || 0);
+                const pmSchoolContrib = (pmTotals.school || 0) + (pmTotals.fixedSchoolContribution || 0);
+                const tmBudgetAfterEdu = tmBudgetCovenant - tmChildrensHome - tmSchoolContrib;
+                const pmBudgetAfterEdu = pmBudgetCovenant - pmChildrensHome - pmSchoolContrib;
                 
-                // School contribution = tithe slip amount + fixed $5000/month
-                const FIXED_SCHOOL_MONTHLY = 5000;
-                const [selYear, selMon] = month.split('-').map(Number);
-                const tmMonthCount = 1; // this month is always 1 month
-                const pmMonthCount = selMon - 1; // previous months in the year
-                const tmSchool = (tmTotals.school || 0) + (FIXED_SCHOOL_MONTHLY * tmMonthCount);
-                const pmSchool = (pmTotals.school || 0) + (FIXED_SCHOOL_MONTHLY * pmMonthCount);
-                const ttdSchool = tmSchool + pmSchool;
+                // Sub Total Conference
+                const tmSubTotalConf = (tmTotals.tithe || 0) + (tmTotals.sabbath_school || 0) + (tmTotals.ingathering || 0) + (tmTotals.nehemiah || 0) + (tmTotals.radio_3abn || 0);
+                const pmSubTotalConf = (pmTotals.tithe || 0) + (pmTotals.sabbath_school || 0) + (pmTotals.ingathering || 0) + (pmTotals.nehemiah || 0) + (pmTotals.radio_3abn || 0);
                 
-                const tmBudgetCovenantAfterEdu = tmBudgetCovenant - tmChildrensHome - tmSchool;
-                const pmBudgetCovenantAfterEdu = pmBudgetCovenant - pmChildrensHome - pmSchool;
-                const ttdBudgetCovenantAfterEdu = ttdBudgetCovenant - ttdChildrensHome - ttdSchool;
+                // 40% and Total Conference
+                const tm40Percent = tmTotals.percentage40 || 0;
+                const pm40Percent = pmTotals.percentage40 || 0;
+                const tmTotalConf = tmSubTotalConf + tm40Percent;
+                const pmTotalConf = pmSubTotalConf + pm40Percent;
                 
                 // Church Operating Income (60%)
                 const tmChurchOperating = tmTotals.churchOperating || 0;
                 const pmChurchOperating = pmTotals.churchOperating || 0;
-                const ttdChurchOperating = tmChurchOperating + pmChurchOperating;
                 
-                // Get expense by category
-                const getExpenseByCategory = (category, expenseList) => {
-                    return expenseList.filter(e => 
-                        (e.category && e.category.toLowerCase().includes(category.toLowerCase())) || 
-                        (e.department && e.department.toLowerCase().includes(category.toLowerCase())) ||
-                        (e.description && e.description.toLowerCase().includes(category.toLowerCase()))
-                    ).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                };
+                // Get expense by department
+                const getExpenseByDept = (dept, expList) => expList.filter(e => e.department === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 
-                // Distribution of Funds calculations - use actual project data
-                // Get all project balances (same as Fund Distribution Report)
+                // Distribution of Funds - project balances
                 const allProjects = projects || [];
                 const projectFunds = allProjects.map(p => {
                     const openingBalance = parseFloat(p.opening_balance) || 0;
@@ -1998,176 +1968,288 @@
                             try {
                                 const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
                                 Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
-                                    if (linkedProjectId === p.id) {
-                                        income += parseFloat(t[fieldKey]) || 0;
-                                    }
+                                    if (linkedProjectId === p.id) income += parseFloat(t[fieldKey]) || 0;
                                 });
                             } catch (e) { }
                         }
                     });
                     const spent = expenses.filter(e => e.project_id === p.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-                    return {
-                        name: p.name,
-                        balance: openingBalance + income - spent
-                    };
+                    return { name: p.name, balance: openingBalance + income - spent };
                 });
                 const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
-                
-                // Church Operating Income (60%)
                 const churchOperatingIncome = allTimeTotals.churchOperating || 0;
-                
-                // Conference Funds to remit
                 const conferenceFunds = allTimeTotals.grandTotalConference || 0;
-                
-                // Chequing account balance
                 const totalDeposits = titheEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
                 const totalExpensesAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 const chequingBalance = totalDeposits - totalExpensesAll;
-                
-                // Total Allocated Funds
-                const totalAllocatedFunds = totalProjectFunds + churchOperatingIncome + conferenceFunds;
-                
-                // Church Reserve = Represented By Total - All other funds (balancing figure)
                 const representedByTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
-                const churchReserve = representedByTotal - totalAllocatedFunds;
+                const churchReserve = representedByTotal - totalProjectFunds - churchOperatingIncome - conferenceFunds;
                 
-                // Build spreadsheet data
-                const data = [];
+                // Build workbook with formulas using openpyxl-style SheetJS
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet([]);
                 
-                // Row 1: Header
-                data.push([`DIEGO MARTIN SDA                                            FINANCIAL STATEMENT FOR ${monthName.toUpperCase()}`]);
+                const acctFmt = '_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)';
                 
-                // Row 2: Conference Funds Header
-                data.push(['CONFERENCE  FUNDS', 'THIS MONTH', 'PREVIOUS MONTHS', 'TOTAL TO DATE']);
+                // Helper to set a cell with value and format
+                const setCell = (ref, val, fmt) => {
+                    ws[ref] = { v: val, t: typeof val === 'number' ? 'n' : 's' };
+                    if (fmt) ws[ref].z = fmt;
+                };
+                const setFormula = (ref, formula, fmt) => {
+                    ws[ref] = { f: formula, t: 'n' };
+                    if (fmt) ws[ref].z = fmt;
+                };
                 
-                // Rows 3-8: Conference Fund Items
-                data.push(['Tithes', tmTotals.tithe || 0, pmTotals.tithe || 0, ttdTithe]);
-                data.push(['Sabbath School', tmTotals.sabbath_school || 0, pmTotals.sabbath_school || 0, ttdSabbathSchool]);
-                data.push(['Ingathering', tmTotals.ingathering || 0, pmTotals.ingathering || 0, ttdIngathering]);
-                data.push(['Nehemiah', tmTotals.nehemiah || 0, pmTotals.nehemiah || 0, ttdNehemiah]);
-                data.push(['Community Hospital', 0, 0, 0]);
-                data.push(['3ABN/Radio', tmTotals.radio_3abn || 0, pmTotals.radio_3abn || 0, ttd3ABN]);
+                // Row 1: Headers
+                setCell('B1', 'THIS MONTH');
+                setCell('C1', 'PREVIOUS MONTHS');
+                setCell('D1', 'TOTAL TO DATE');
+                
+                // Row 2: CONFERENCE FUNDS
+                setCell('A2', 'CONFERENCE  FUNDS');
+                
+                // Rows 3-8: Conference items
+                setCell('A3', 'Tithes');
+                setCell('B3', tmTotals.tithe || 0, acctFmt);
+                setCell('C3', pmTotals.tithe || 0, acctFmt);
+                setFormula('D3', 'B3+C3', acctFmt);
+                
+                setCell('A4', 'Sabbath School');
+                setCell('B4', tmTotals.sabbath_school || 0, acctFmt);
+                setCell('C4', pmTotals.sabbath_school || 0, acctFmt);
+                setFormula('D4', 'B4+C4', acctFmt);
+                
+                setCell('A5', 'Ingathering');
+                setCell('B5', tmTotals.ingathering || 0, acctFmt);
+                setCell('C5', pmTotals.ingathering || 0, acctFmt);
+                setFormula('D5', 'B5+C5', acctFmt);
+                
+                setCell('A6', 'Nehemiah');
+                setCell('B6', tmTotals.nehemiah || 0, acctFmt);
+                setCell('C6', pmTotals.nehemiah || 0, acctFmt);
+                setFormula('D6', 'B6+C6', acctFmt);
+                
+                setCell('A7', 'Community Hospital');
+                setCell('B7', 0, acctFmt);
+                setCell('C7', 0, acctFmt);
+                setFormula('D7', 'B7+C7', acctFmt);
+                
+                setCell('A8', '3ABN/Radio');
+                setCell('B8', tmTotals.radio_3abn || 0, acctFmt);
+                setCell('C8', pmTotals.radio_3abn || 0, acctFmt);
+                setFormula('D8', 'B8+C8', acctFmt);
                 
                 // Row 9: Sub Total
-                data.push(['Sub Total of Conference Funds', tmSubTotalConf, pmSubTotalConf, ttdSubTotalConf]);
+                setCell('A9', 'Sub Total of Conference Funds');
+                setCell('B9', tmSubTotalConf, acctFmt);
+                setCell('C9', pmSubTotalConf, acctFmt);
+                setFormula('D9', 'B9+C9', acctFmt);
                 
-                // Row 10: Empty
-                data.push([]);
+                // Row 10: empty
                 
-                // Row 11-16: Church Contributions to Conference (40% calculation breakdown)
-                data.push(['Church Contributions to Conference']);
-                data.push(['Budget Covenant/Offerings', tmBudgetCovenant, pmBudgetCovenant, ttdBudgetCovenant]);
-                data.push(["less: Children's HOME", -tmChildrensHome, -pmChildrensHome, -ttdChildrensHome]);
-                data.push(['less: Contribution to School (Wesport)', -tmSchool, -pmSchool, -ttdSchool]);
-                data.push(['Budget Covenant after contribution', tmBudgetCovenantAfterEdu, pmBudgetCovenantAfterEdu, ttdBudgetCovenantAfterEdu]);
-                data.push(['40% of Total Church Offering to local Conference', tm40Percent, pm40Percent, ttd40Percent]);
+                // Row 11: Church Contributions header
+                setCell('A11', 'Church Contributions to Conference');
+                
+                // Row 12: Budget Covenant
+                setCell('A12', 'Budget Covenant/Offerings');
+                setCell('B12', tmBudgetCovenant, acctFmt);
+                setCell('C12', pmBudgetCovenant, acctFmt);
+                setFormula('D12', 'B12+C12', acctFmt);
+                
+                // Row 13: less Children's Home
+                setCell('A13', "less: Children's HOME");
+                setCell('B13', -tmChildrensHome, acctFmt);
+                setCell('C13', -pmChildrensHome, acctFmt);
+                setFormula('D13', 'B13+C13', acctFmt);
+                
+                // Row 14: less School
+                setCell('A14', 'less: Contribution to School (Wesport)');
+                setCell('B14', -tmSchoolContrib, acctFmt);
+                setCell('C14', -pmSchoolContrib, acctFmt);
+                setFormula('D14', 'B14+C14', acctFmt);
+                
+                // Row 15: Budget Covenant after contribution
+                setCell('A15', 'Budget Covenant after contribution');
+                setCell('B15', tmBudgetAfterEdu, acctFmt);
+                setCell('C15', pmBudgetAfterEdu, acctFmt);
+                setFormula('D15', 'B15+C15', acctFmt);
+                
+                // Row 16: 40% (formula: =-B15*0.4)
+                setCell('A16', '40% of Total Church Offering to local Conference');
+                setFormula('B16', '-B15*0.4', acctFmt);
+                setCell('C16', pm40Percent, acctFmt);
+                setFormula('D16', 'B16+C16', acctFmt);
                 
                 // Row 17: Total Conference Funds
-                data.push(['Total Conference Funds', tmTotalConf, pmTotalConf, ttdTotalConf]);
+                setCell('A17', 'Total Conference Funds');
+                setCell('B17', tmTotalConf, acctFmt);
+                setCell('C17', pmTotalConf, acctFmt);
+                setFormula('D17', 'B17+C17', acctFmt);
                 
-                // Row: Empty
-                data.push([]);
+                // Row 18: empty
                 
-                // Church Funds Header
-                data.push(['CHURCH FUNDS']);
+                // Row 19: CHURCH FUNDS header
+                setCell('A19', 'CHURCH FUNDS');
                 
-                // Church Fund Items (Budget Covenant breakdown already shown above in Conference section)
-                data.push(['Budget Covenant/Offerings', tmBudgetCovenant, pmBudgetCovenant, ttdBudgetCovenant]);
-                data.push(["less: Children's HOME", -tmChildrensHome, -pmChildrensHome, -ttdChildrensHome]);
-                data.push(['less: Contribution to School (Wesport)', -tmSchool, -pmSchool, -ttdSchool]);
-                data.push(['Budget Covenant after Education contribution', tmBudgetCovenantAfterEdu, pmBudgetCovenantAfterEdu, ttdBudgetCovenantAfterEdu]);
-                data.push(['Welfare', tmTotals.welfare || 0, pmTotals.welfare || 0, (tmTotals.welfare || 0) + (pmTotals.welfare || 0)]);
-                data.push(['Church Building Fund', tmTotals.church_building || 0, pmTotals.church_building || 0, (tmTotals.church_building || 0) + (pmTotals.church_building || 0)]);
-                data.push(['Contribution to School', tmTotals.school || 0, pmTotals.school || 0, ttdSchool]);
-                data.push(["Children's Home", tmChildrensHome, pmChildrensHome, ttdChildrensHome]);
-                data.push(['Choir', tmTotals.choir || 0, pmTotals.choir || 0, (tmTotals.choir || 0) + (pmTotals.choir || 0)]);
-                data.push(['Special Project', tmTotals.special_project || 0, pmTotals.special_project || 0, (tmTotals.special_project || 0) + (pmTotals.special_project || 0)]);
-                data.push(['Church Project', tmTotals.project || 0, pmTotals.project || 0, (tmTotals.project || 0) + (pmTotals.project || 0)]);
-                data.push(['Messages of Hope Radio', tmTotals.messages_of_hope || 0, pmTotals.messages_of_hope || 0, (tmTotals.messages_of_hope || 0) + (pmTotals.messages_of_hope || 0)]);
-                data.push(['Funeral Fund', tmTotals.funeral || 0, pmTotals.funeral || 0, (tmTotals.funeral || 0) + (pmTotals.funeral || 0)]);
-                data.push(['Ministry Fund', 0, 0, 0]);
-                data.push(['Camp', tmTotals.camp || 0, pmTotals.camp || 0, (tmTotals.camp || 0) + (pmTotals.camp || 0)]);
-                data.push(['Refunds', tmTotals.refunds || 0, pmTotals.refunds || 0, (tmTotals.refunds || 0) + (pmTotals.refunds || 0)]);
+                // Row 20: Budget Covenant
+                setCell('A20', 'Budget Covenant/Offerings');
+                setCell('B20', tmBudgetCovenant, acctFmt);
+                setCell('C20', pmBudgetCovenant, acctFmt);
+                setFormula('D20', 'B20+C20', acctFmt);
                 
-                // Row 33: Total Church Income
-                const tmTotalChurchIncome = tmTotals.totalChurchFund || 0;
-                const pmTotalChurchIncome = pmTotals.totalChurchFund || 0;
-                const ttdTotalChurchIncome = tmTotalChurchIncome + pmTotalChurchIncome;
-                data.push(['TOTAL CHURCH INCOME', tmTotalChurchIncome, pmTotalChurchIncome, ttdTotalChurchIncome]);
+                // Rows 21-32: Church fund items
+                const churchItems = [
+                    ['Welfare', tmTotals.welfare || 0, pmTotals.welfare || 0],
+                    ['Church Building Fund', tmTotals.project || 0, pmTotals.project || 0],
+                    ['Contribution to School', tmTotals.school || 0, pmTotals.school || 0],
+                    ["Children's Home", tmChildrensHome, pmChildrensHome],
+                    ['Choir', tmTotals.raffa_house || 0, pmTotals.raffa_house || 0],
+                    ['Special Project', tmTotals.tv || 0, pmTotals.tv || 0],
+                    ['Church Project', tmTotals.government_fund || 0, pmTotals.government_fund || 0],
+                    ['Messages of Hope Radio', tmTotals.messages_of_hope || 0, pmTotals.messages_of_hope || 0],
+                    ['Funeral Fund', tmTotals.funeral || 0, pmTotals.funeral || 0],
+                    ['Ministry Fund', 0, 0],
+                    ['Camp', tmTotals.camp || 0, pmTotals.camp || 0],
+                    ['Refunds', tmTotals.books || 0, pmTotals.books || 0],
+                ];
+                churchItems.forEach((item, i) => {
+                    const r = 21 + i;
+                    setCell(`A${r}`, item[0]);
+                    setCell(`B${r}`, item[1], acctFmt);
+                    setCell(`C${r}`, item[2], acctFmt);
+                    setFormula(`D${r}`, `B${r}+C${r}`, acctFmt);
+                });
                 
-                // Row 34: Less 40%
-                data.push(['Less 40% to Local Conference', -tm40Percent, -pm40Percent, -ttd40Percent]);
+                // Row 33: TOTAL CHURCH INCOME (formula: =SUM(B20:B32))
+                setCell('A33', 'TOTAL CHURCH INCOME');
+                setFormula('B33', 'SUM(B20:B32)', acctFmt);
+                setCell('C33', pmTotals.totalChurchFund || 0, acctFmt);
+                setFormula('D33', 'B33+C33', acctFmt);
                 
-                // Row 35: Total Church Operating Income
-                data.push(['TOTAL CHURCH OPERATING INCOME', tmChurchOperating, pmChurchOperating, ttdChurchOperating]);
+                // Row 34: Less 40% (formula: =B16)
+                setCell('A34', 'Less 40% to Local Conference');
+                setFormula('B34', 'B16', acctFmt);
+                setCell('C34', -pm40Percent, acctFmt);
+                setFormula('D34', 'B34+C34', acctFmt);
                 
-                // Row 36: Empty
-                data.push([]);
+                // Row 35: TOTAL CHURCH OPERATING INCOME (formula: =B33+B34)
+                setCell('A35', 'TOTAL CHURCH OPERATING INCOME');
+                setFormula('B35', 'B33+B34', acctFmt);
+                setCell('C35', pmChurchOperating, acctFmt);
+                setFormula('D35', 'B35+C35', acctFmt);
                 
-                // Row 37: Expenditure Header
-                data.push(['EXPENDITURE', 'THIS MONTH', 'PREVIOUS MONTHS', 'TOTAL TO DATE']);
+                // Row 36: empty
                 
-                // List all departments with summed totals for this month
+                // Row 37: EXPENDITURE header
+                setCell('A37', 'EXPENDITURE');
+                
+                // Rows 38+: Expense categories
+                let expRow = 38;
                 EXPENSE_CATEGORIES.forEach(dept => {
-                    if (!dept) return; // skip empty
-                    const tmExp = monthExpenses.filter(e => e.department === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                    const pmExp = prevMonthExpenses.filter(e => e.department === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                    data.push([dept, tmExp, pmExp, tmExp + pmExp]);
+                    if (!dept) return;
+                    const tmExp = getExpenseByDept(dept, monthExpenses);
+                    const pmExp = getExpenseByDept(dept, prevMonthExpenses);
+                    setCell(`A${expRow}`, dept);
+                    setCell(`B${expRow}`, tmExp, acctFmt);
+                    setCell(`C${expRow}`, pmExp, acctFmt);
+                    setFormula(`D${expRow}`, `B${expRow}+C${expRow}`, acctFmt);
+                    expRow++;
                 });
                 
-                // Total Expenses
-                data.push(['TOTAL CHURCH  EXPENSES', thisMonthExpenseTotal, prevMonthExpenseTotal, thisMonthExpenseTotal + prevMonthExpenseTotal]);
+                // Total Expenses row
+                const totalExpRow = expRow;
+                setCell(`A${totalExpRow}`, 'TOTAL CHURCH  EXPENSES');
+                setCell(`B${totalExpRow}`, thisMonthExpenseTotal, acctFmt);
+                setCell(`C${totalExpRow}`, prevMonthExpenseTotal, acctFmt);
+                setFormula(`D${totalExpRow}`, `B${totalExpRow}+C${totalExpRow}`, acctFmt);
                 
                 // Empty row
-                data.push([]);
+                const reconHeader = totalExpRow + 2;
                 
-                // Reconciliation
-                data.push(['Reconciliation  ']);
-                data.push(['Balance From Previous Month', parseFloat(prevBalance)]);
-                data.push(['Add: Church Operating Income (60%)', tmChurchOperating]);
-                data.push(['Less: Total Church Expenses', -thisMonthExpenseTotal]);
-                data.push([`Balance as at: ${monthEndDate}`, parseFloat(prevBalance) + tmChurchOperating - thisMonthExpenseTotal]);
+                // Reconciliation: Chequing Account
+                setCell(`A${reconHeader}`, 'Reconciliation: Chequing Account ');
+                
+                // Balance From Previous Month
+                const reconPrev = reconHeader + 1;
+                setCell(`A${reconPrev}`, 'Balance From Previous Month');
+                setCell(`B${reconPrev}`, parseFloat(prevBalance), acctFmt);
+                
+                // Balance as at (formula: =BprevBalance+B35-Btotalexp)
+                const reconBal = reconPrev + 1;
+                setCell(`A${reconBal}`, `Balance as at: ${monthEndDate}`);
+                setFormula(`B${reconBal}`, `B${reconPrev}+B35-B${totalExpRow}`, acctFmt);
+                
+                // Increase/Decrease (formula: =Bbal-Bprev)
+                const reconInc = reconBal + 1;
+                setCell(`A${reconInc}`, 'Increase/Decrease');
+                setFormula(`B${reconInc}`, `B${reconBal}-B${reconPrev}`, acctFmt);
                 
                 // Empty row
-                data.push([]);
+                const distRow = reconInc + 2;
                 
-                // Distribution of Funds section
-                data.push(['Distribution of Funds', '', 'Represented by ', '']);
+                // Distribution of Funds
+                setCell(`A${distRow}`, 'Distribution of Funds');
+                setCell(`B${distRow}`, '');
+                setCell(`C${distRow}`, 'Represented by ');
+                setCell(`D${distRow}`, '');
                 
-                // Add all project funds dynamically
+                let r = distRow + 1;
                 projectFunds.forEach(p => {
-                    data.push([p.name, p.balance, '', '']);
+                    setCell(`A${r}`, p.name);
+                    setCell(`B${r}`, p.balance, acctFmt);
+                    r++;
                 });
-                data.push(['Total Project Funds', totalProjectFunds, '', '']);
-                data.push([]);
-                data.push(['Church Operating Income (60%)', churchOperatingIncome, 'Unit Trust', parseFloat(unitTrust)]);
-                data.push(['Conference Funds (to remit)', conferenceFunds, 'Chequing account', chequingBalance]);
-                data.push(['Church Reserve', churchReserve, 'Revolving Fund', parseFloat(revolvingFund)]);
-                data.push([]);
                 
+                // Total Project Funds
+                const tpfRow = r;
+                setCell(`A${r}`, 'Total Project Funds');
+                setCell(`B${r}`, totalProjectFunds, acctFmt);
+                r += 2;
+                
+                // Church Operating Income (formula: =B35)
+                const coiRow = r;
+                setCell(`A${r}`, 'Church Operating Income (60%)');
+                setFormula(`B${r}`, 'B35', acctFmt);
+                setCell(`C${r}`, 'Unit Trust');
+                setCell(`D${r}`, parseFloat(unitTrust), acctFmt);
+                r++;
+                
+                // Conference Funds (formula: =B17)
+                const cfRow = r;
+                setCell(`A${r}`, 'Conference Funds (to remit)');
+                setFormula(`B${r}`, 'B17', acctFmt);
+                setCell(`C${r}`, 'Chequing account');
+                setCell(`D${r}`, chequingBalance, acctFmt);
+                r++;
+                
+                // Church Reserve (formula: =D{totalsRow}-B{totalProjectFunds}-B{COI}-B{conf})
+                const crRow = r;
+                const totalsRow = r + 2;
+                setCell(`A${r}`, 'Church Reserve');
+                setFormula(`B${r}`, `D${totalsRow}-B${tpfRow}-B${coiRow}-B${cfRow}`, acctFmt);
+                setCell(`C${r}`, 'Revolving Fund');
+                setCell(`D${r}`, parseFloat(revolvingFund), acctFmt);
+                r += 2;
+                
+                // Totals row
+                setCell(`A${r}`, 'Totals');
                 const leftTotal = totalProjectFunds + churchOperatingIncome + conferenceFunds + churchReserve;
-                const rightTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
-                data.push(['Totals', leftTotal, '', rightTotal]);
+                setCell(`B${r}`, leftTotal, acctFmt);
+                setCell(`C${r}`, '');
+                setCell(`D${r}`, representedByTotal, acctFmt);
                 
-                // Empty row
-                data.push([]);
+                // Set sheet range
+                ws['!ref'] = `A1:D${r}`;
                 
-                // Signature
-                data.push(['Treasurer: ', ' Pastor: Ps. Morgavy Gittens']);
-                data.push(['Date : ']);
-                
-                // Create workbook with formatting
-                const ws = XLSX.utils.aoa_to_sheet(data);
-                
-                // Set column widths
+                // Column widths
                 ws['!cols'] = [
-                    { wch: 55 },  // Column A
-                    { wch: 18 },  // Column B
-                    { wch: 20 },  // Column C
-                    { wch: 18 }   // Column D
+                    { wch: 55 },
+                    { wch: 18 },
+                    { wch: 20 },
+                    { wch: 18 }
                 ];
                 
-                const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'Financial Statement');
                 XLSX.writeFile(wb, `Financial_Statement_${month}.xlsx`);
             };
@@ -2296,10 +2378,8 @@
                             <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
                                 <h3 className="text-sm font-semibold text-amber-400 mb-2">Reconciliation</h3>
                                 <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between"><span className="text-slate-400">Church Operating Income</span><span className="text-white">{fmtCur(thisMonthTotals.churchOperating)}</span></div>
-                                    <div className="flex justify-between"><span className="text-slate-400">Less: Total Expenses</span><span className="text-red-400">-{fmtCur(thisMonthExpenseTotal)}</span></div>
-                                    <div className="flex justify-between border-t border-slate-700 pt-2"><span className="text-slate-300">Increase/Decrease</span><span className={increaseDecrease >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmtCur(increaseDecrease)}</span></div>
-                                    <div className="flex justify-between"><span className="text-slate-400">Previous Balance</span><span className="text-white">{fmtCur(prevBalance)}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-300">Increase/Decrease</span><span className={increaseDecrease >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmtCur(increaseDecrease)}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-400">Balance From Previous Month</span><span className="text-white">{fmtCur(prevBalance)}</span></div>
                                     <div className="flex justify-between bg-amber-500/20 p-2 rounded-lg font-bold"><span className="text-amber-400">Balance as at {monthName}</span><span className="text-amber-400">{fmtCur(parseFloat(prevBalance) + increaseDecrease)}</span></div>
                                 </div>
                             </div>
@@ -6072,11 +6152,11 @@
             totals.fixedSchoolContribution = fixedSchoolTotal;
             const totalSchoolDeduction = (totals.school || 0) + fixedSchoolTotal;
             
-            // 40%/60% is calculated on Budget Covenant MINUS School contributions (tithe + fixed), Children's Home, AND Wesport expenses
-            const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0) - wesportExpenses;
+            // 40%/60% is calculated on Budget Covenant MINUS School contributions (tithe + fixed) and Children's Home
+            const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0);
             totals.baseFor40_60 = baseFor40_60;
             totals.percentage40 = baseFor40_60 * 0.4;
-            totals.churchOperating = baseFor40_60 * 0.6;
+            totals.churchOperating = totals.totalChurchFund - totals.percentage40;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;
             return totals;
         }

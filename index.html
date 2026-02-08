@@ -31,6 +31,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
     <style>
         * { font-family: system-ui, -apple-system, sans-serif; }
         body { margin: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); min-height: 100vh; }
@@ -385,6 +386,7 @@
             const [deposits, setDeposits] = useState([]);
             const [budgetItems, setBudgetItems] = useState([]);
             const [projects, setProjects] = useState([]);
+            const [submissions, setSubmissions] = useState([]);
             const [cheques, setCheques] = useState([]);
             const [settings, setSettings] = useState({ previous_balance: 0, unit_trust: 79082.04, revolving_fund: 597996.24 });
             const [view, setView] = useState('dashboard');
@@ -447,6 +449,13 @@
                         if (chequesRes.data) setCheques(chequesRes.data);
                     } catch (e) {
                         console.log('Cheques table not available yet');
+                    }
+                    // Load submissions separately
+                    try {
+                        const subRes = await supabase.from('tithe_submissions').select('*').order('created_at', { ascending: false });
+                        if (subRes.data) setSubmissions(subRes.data);
+                    } catch (e) {
+                        console.log('Submissions table not available yet');
                     }
                 } catch (err) {
                     console.error('Load error:', err);
@@ -657,6 +666,7 @@
                 { key: 'forecasting', label: 'Forecasting' },
                 { key: 'reports', label: 'Reports' },
                 { key: 'statement', label: 'Statement' },
+                { key: 'submissions', label: 'Submissions' },
             ];
 
             const titheTotals = calculateTitheTotals(titheEntries, expenses);
@@ -707,8 +717,11 @@
                                 </div>
                                 <nav className="flex gap-1 flex-wrap">
                                     {navItems.map(item => (
-                                        <button key={item.key} onClick={() => { setEditingItem(null); setView(item.key); }} className={`px-2 py-1.5 rounded-lg text-xs font-medium ${view === item.key || view.startsWith(item.key) ? 'bg-amber-500 text-slate-900' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'}`}>
+                                        <button key={item.key} onClick={() => { setEditingItem(null); setView(item.key); }} className={`px-2 py-1.5 rounded-lg text-xs font-medium relative ${view === item.key || view.startsWith(item.key) ? 'bg-amber-500 text-slate-900' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'}`}>
                                             {item.label}
+                                            {item.key === 'submissions' && submissions.filter(s=>s.status==='pending').length > 0 && (
+                                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">{submissions.filter(s=>s.status==='pending').length}</span>
+                                            )}
                                         </button>
                                     ))}
                                 </nav>
@@ -1109,6 +1122,15 @@
                                 settings={settings}
                                 saveSettings={saveSettings}
                                 projects={projects}
+                            />
+                        )}
+                        {view === 'submissions' && (
+                            <SubmissionsReview 
+                                submissions={submissions}
+                                setSubmissions={setSubmissions}
+                                supabase={supabase}
+                                titheEntries={titheEntries}
+                                loadData={loadData}
                             />
                         )}
                     </main>
@@ -1939,8 +1961,8 @@
                 const pmBudgetAfterEdu = pmBudgetCovenant - pmChildrensHome - pmSchoolContrib;
                 
                 // Sub Total Conference
-                const tmSubTotalConf = (tmTotals.tithe || 0) + (tmTotals.sabbath_school || 0) + (tmTotals.ingathering || 0) + (tmTotals.nehemiah || 0) + (tmTotals.radio_3abn || 0);
-                const pmSubTotalConf = (pmTotals.tithe || 0) + (pmTotals.sabbath_school || 0) + (pmTotals.ingathering || 0) + (pmTotals.nehemiah || 0) + (pmTotals.radio_3abn || 0);
+                const tmSubTotalConf = (tmTotals.tithe || 0) + (tmTotals.sabbath_school || 0) + (tmTotals.ingathering || 0) + (tmTotals.nehemiah || 0) + (tmTotals.radio || 0);
+                const pmSubTotalConf = (pmTotals.tithe || 0) + (pmTotals.sabbath_school || 0) + (pmTotals.ingathering || 0) + (pmTotals.nehemiah || 0) + (pmTotals.radio || 0);
                 
                 // 40% and Total Conference
                 const tm40Percent = tmTotals.percentage40 || 0;
@@ -1979,9 +2001,8 @@
                 const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
                 const churchOperatingIncome = allTimeTotals.churchOperating || 0;
                 const conferenceFunds = allTimeTotals.grandTotalConference || 0;
-                const totalDeposits = titheEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
-                const totalExpensesAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                const chequingBalance = totalDeposits - totalExpensesAll;
+                // Chequing balance = Reconciliation "Balance as at" = prevBalance + churchOperating - expenses
+                const chequingBalance = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal;
                 const representedByTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
                 const churchReserve = representedByTotal - totalProjectFunds - churchOperatingIncome - conferenceFunds;
                 
@@ -2036,8 +2057,8 @@
                 setFormula('D7', 'B7+C7', acctFmt);
                 
                 setCell('A8', '3ABN/Radio');
-                setCell('B8', tmTotals.radio_3abn || 0, acctFmt);
-                setCell('C8', pmTotals.radio_3abn || 0, acctFmt);
+                setCell('B8', tmTotals.radio || 0, acctFmt);
+                setCell('C8', pmTotals.radio || 0, acctFmt);
                 setFormula('D8', 'B8+C8', acctFmt);
                 
                 // Row 9: Sub Total
@@ -2254,6 +2275,134 @@
                 XLSX.writeFile(wb, `Financial_Statement_${month}.xlsx`);
             };
 
+            // Export PowerPoint Presentation for Board Meeting
+            const exportPresentation = () => {
+                const pres = new PptxGenJS();
+                pres.layout = 'LAYOUT_16x9';
+                pres.author = 'Diego Martin SDA Treasury';
+                pres.title = 'Financial Statement - ' + monthName;
+                const tmTotals = thisMonthTotals;
+                const fmtC = (v) => '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                const navy='1E2761',darkBg='0F172A',gold='F59E0B',white='FFFFFF',ice='CADCFC',green='10B981',red='EF4444',slate='94A3B8',darkSlate='1E293B',purple='8B5CF6';
+                const tmBudgetCovenant=tmTotals.budget_covenant||0, tmChildrensHome=tmTotals.pos_band||0;
+                const tm40Pct=tmTotals.percentage40||0, tmChurchOp=tmTotals.churchOperating||0;
+                const tmTotalChurchIncome=tmTotals.totalChurchFund||0;
+                const tmSubTotalConf=(tmTotals.tithe||0)+(tmTotals.sabbath_school||0)+(tmTotals.ingathering||0)+(tmTotals.nehemiah||0)+(tmTotals.radio||0);
+                const tmTotalConf=tmSubTotalConf+tm40Pct;
+                const reconBalance=parseFloat(prevBalance)+tmChurchOp-thisMonthExpenseTotal;
+                const increaseDecrease=tmChurchOp-thisMonthExpenseTotal;
+                const netPosition=increaseDecrease;
+                // Distribution data
+                const allPrj=projects||[];
+                const pptPF=allPrj.map(p=>{const ob=parseFloat(p.opening_balance)||0;let inc=0;titheEntries.forEach(t=>{if(t.project_id===p.id)inc+=(parseFloat(t.project)||0)+(parseFloat(t.government_fund)||0);if(t.project_links){try{const lk=typeof t.project_links==='string'?JSON.parse(t.project_links):t.project_links;Object.entries(lk).forEach(([fk,pid])=>{if(pid===p.id)inc+=parseFloat(t[fk])||0;});}catch(e){}}});const sp=expenses.filter(e=>e.project_id===p.id).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{name:p.name,balance:ob+inc-sp};});
+                const totPF=pptPF.reduce((s,p)=>s+p.balance,0);
+                const pCOA=allTimeTotals.churchOperating||0,pCF=allTimeTotals.grandTotalConference||0;
+                const pCheq=reconBalance,pUT=parseFloat(unitTrust),pRF=parseFloat(revolvingFund);
+                const pRepT=pUT+pCheq+pRF,pRes=pRepT-totPF-pCOA-pCF;
+                const addH=(sl,t)=>{sl.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.9,fill:{color:navy}});sl.addText(t,{x:0.5,y:0.1,w:9,h:0.7,fontSize:28,fontFace:'Georgia',color:white,bold:true});};
+                // S1: Title
+                let slide=pres.addSlide();slide.background={color:darkBg};
+                slide.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:1.4,fill:{color:navy}});
+                slide.addShape(pres.shapes.RECTANGLE,{x:0,y:1.4,w:10,h:0.08,fill:{color:gold}});
+                slide.addText('DIEGO MARTIN SDA CHURCH',{x:0.8,y:1.9,w:8.4,h:0.9,fontSize:40,fontFace:'Georgia',color:white,bold:true});
+                slide.addText('Financial Statement for '+monthName,{x:0.8,y:2.8,w:8.4,h:0.7,fontSize:28,fontFace:'Calibri',color:gold});
+                slide.addText('Board Presentation',{x:0.8,y:3.6,w:8.4,h:0.6,fontSize:22,fontFace:'Calibri',color:slate});
+                slide.addText(new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}),{x:0.8,y:4.6,w:8.4,h:0.5,fontSize:18,fontFace:'Calibri',color:slate});
+                // S2: Executive Summary
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'EXECUTIVE SUMMARY');
+                [{label:'Total Received',value:fmtC(tmTotals.totalReceived||0),color:ice},{label:'Church Operating',value:fmtC(tmChurchOp),color:green},{label:'Total Expenses',value:fmtC(thisMonthExpenseTotal),color:red},{label:'Chequing Balance',value:fmtC(reconBalance),color:gold}].forEach((m,i)=>{
+                    const x=0.3+(i*2.4);
+                    slide.addShape(pres.shapes.RECTANGLE,{x:x,y:1.2,w:2.2,h:1.6,fill:{color:darkSlate},shadow:{type:'outer',blur:4,offset:2,angle:135,color:'000000',opacity:0.3}});
+                    slide.addText(m.value,{x:x,y:1.3,w:2.2,h:0.9,fontSize:24,fontFace:'Calibri',color:m.color,bold:true,align:'center',valign:'middle'});
+                    slide.addText(m.label,{x:x,y:2.2,w:2.2,h:0.5,fontSize:16,fontFace:'Calibri',color:slate,align:'center'});
+                });
+                slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:3.15,w:9,h:0.9,fill:{color:darkSlate}});
+                slide.addText([{text:'Net Position:  ',options:{color:slate,fontSize:20}},{text:(netPosition>=0?'+':'')+fmtC(netPosition),options:{color:netPosition>=0?green:red,fontSize:28,bold:true}},{text:netPosition>=0?'  SURPLUS':'  DEFICIT',options:{color:netPosition>=0?green:red,fontSize:20,bold:true}}],{x:0.5,y:3.15,w:9,h:0.9,align:'center',valign:'middle'});
+                slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:4.35,w:4.3,h:1.0,fill:{color:darkSlate}});
+                slide.addText('Conference Funds to Remit',{x:0.7,y:4.38,w:3.9,h:0.38,fontSize:16,color:slate});
+                slide.addText(fmtC(tmTotalConf),{x:0.7,y:4.72,w:3.9,h:0.55,fontSize:26,fontFace:'Calibri',color:ice,bold:true});
+                slide.addShape(pres.shapes.RECTANGLE,{x:5.2,y:4.35,w:4.3,h:1.0,fill:{color:darkSlate}});
+                slide.addText('Tithes Collected',{x:5.4,y:4.38,w:3.9,h:0.38,fontSize:16,color:slate});
+                slide.addText(fmtC(tmTotals.tithe||0),{x:5.4,y:4.72,w:3.9,h:0.55,fontSize:26,fontFace:'Calibri',color:ice,bold:true});
+                // S3: Conference
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'CONFERENCE FUNDS');
+                [['Tithes',fmtC(tmTotals.tithe||0),false,false],['Sabbath School',fmtC(tmTotals.sabbath_school||0),false,false],['Ingathering',fmtC(tmTotals.ingathering||0),false,false],['Nehemiah',fmtC(tmTotals.nehemiah||0),false,false],['3ABN/Radio',fmtC(tmTotals.radio||0),false,false],['Sub Total Conference',fmtC(tmSubTotalConf),true,false],['40% Church Offering','('+fmtC(tm40Pct)+')',false,true],['TOTAL CONFERENCE FUNDS',fmtC(tmTotalConf),true,false]].forEach((item,i)=>{
+                    const y=1.2+(i*0.52),bg=item[2]?'1A2332':darkSlate,clr=item[2]?gold:item[3]?ice:white;
+                    slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:5.5,h:0.48,fill:{color:bg}});
+                    slide.addText(item[0],{x:0.7,y:y,w:3.5,h:0.48,fontSize:18,color:clr,bold:item[2],valign:'middle'});
+                    slide.addText(item[1],{x:4.2,y:y,w:1.6,h:0.48,fontSize:18,color:clr,bold:item[2],align:'right',valign:'middle'});
+                });
+                const cL=['Tithes','SS','Ingathering','Nehemiah','3ABN','40%'],cV=[tmTotals.tithe||0,tmTotals.sabbath_school||0,tmTotals.ingathering||0,tmTotals.nehemiah||0,tmTotals.radio||0,tm40Pct];
+                const nL=cL.filter((_,i)=>cV[i]>0),nV=cV.filter(v=>v>0);
+                if(nL.length>0)slide.addChart(pres.charts.DOUGHNUT,[{name:'C',labels:nL,values:nV}],{x:6.2,y:1.1,w:3.5,h:3.5,showPercent:true,showTitle:false,chartColors:['2563EB','7C3AED','059669','D97706','DC2626','0891B2'],dataLabelColor:white,dataLabelFontSize:12,chartArea:{fill:{color:darkBg}}});
+                // S4: Church Income - full width, dynamic row height
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'CHURCH INCOME');
+                const cFI=[['Budget Covenant/Offerings',tmBudgetCovenant],['Welfare',tmTotals.welfare||0],['Church Building Fund',tmTotals.project||0],['Contribution to School',tmTotals.school||0],["Children's Home",tmChildrensHome],['Special Project',tmTotals.tv||0],['Church Project',tmTotals.government_fund||0],['Messages of Hope Radio',tmTotals.messages_of_hope||0],['Refunds',tmTotals.books||0]].filter(i=>i[1]>0);
+                const ciRows=cFI.length+3;const ciRH=Math.min(0.38,4.0/ciRows);const ciStart=1.1;
+                cFI.forEach((item,i)=>{const y=ciStart+(i*ciRH);slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:ciRH-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:0.7,y:y,w:5,h:ciRH-0.02,fontSize:16,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:y,w:3.3,h:ciRH-0.02,fontSize:16,color:white,align:'right',valign:'middle'});});
+                const ciTY=ciStart+(cFI.length*ciRH)+0.06;
+                [['TOTAL CHURCH INCOME',fmtC(tmTotalChurchIncome),gold],['Less 40% to Conference','('+fmtC(tm40Pct)+')',red],['CHURCH OPERATING INCOME',fmtC(tmChurchOp),green]].forEach((item,i)=>{const y=ciTY+(i*(ciRH+0.04)),bg=(i===0||i===2)?'1A2332':darkSlate;slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:ciRH+0.02,fill:{color:bg}});slide.addText(item[0],{x:0.7,y:y,w:5,h:ciRH+0.02,fontSize:18,color:item[2],bold:true,valign:'middle'});slide.addText(item[1],{x:6,y:y,w:3.3,h:ciRH+0.02,fontSize:18,color:item[2],bold:true,align:'right',valign:'middle'});});
+                // S5: Expenditure - full width, dynamic row height, split to 2 slides if >10
+                const eI=[];EXPENSE_CATEGORIES.forEach(d=>{if(!d)return;const a=monthExpenses.filter(e=>e.department===d).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);if(a>0)eI.push([d,a]);});eI.sort((a,b)=>b[1]-a[1]);
+                const maxPerSlide=10;
+                const renderExpSlide=(items,title,showTotal)=>{
+                    slide=pres.addSlide();slide.background={color:darkBg};addH(slide,title);
+                    const rows=items.length+(showTotal?1:0);const rh=Math.min(0.36,4.2/rows);const st=1.1;
+                    items.forEach((item,i)=>{const y=st+(i*rh);slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:rh-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:0.7,y:y,w:5,h:rh-0.02,fontSize:15,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:y,w:3.3,h:rh-0.02,fontSize:15,color:white,align:'right',valign:'middle'});});
+                    if(showTotal){const ty=st+(items.length*rh)+0.06;slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:ty,w:9,h:rh+0.04,fill:{color:'1A2332'}});slide.addText('TOTAL EXPENSES',{x:0.7,y:ty,w:5,h:rh+0.04,fontSize:18,color:red,bold:true,valign:'middle'});slide.addText(fmtC(thisMonthExpenseTotal),{x:6,y:ty,w:3.3,h:rh+0.04,fontSize:18,color:red,bold:true,align:'right',valign:'middle'});}
+                };
+                if(eI.length<=maxPerSlide){renderExpSlide(eI,'EXPENDITURE',true);}
+                else{renderExpSlide(eI.slice(0,maxPerSlide),'EXPENDITURE (1/2)',false);renderExpSlide(eI.slice(maxPerSlide),'EXPENDITURE (2/2)',true);}
+                // S6: Reconciliation
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'RECONCILIATION: CHEQUING ACCOUNT');
+                slide.addShape(pres.shapes.RECTANGLE,{x:1.5,y:1.2,w:7,h:2.4,fill:{color:darkSlate},shadow:{type:'outer',blur:6,offset:3,angle:135,color:'000000',opacity:0.3}});
+                slide.addText('Chequing Account Balance',{x:1.5,y:1.35,w:7,h:0.55,fontSize:20,color:slate,align:'center'});
+                slide.addText(fmtC(reconBalance),{x:1.5,y:1.9,w:7,h:1.1,fontSize:52,fontFace:'Georgia',color:gold,bold:true,align:'center'});
+                slide.addText('as at '+monthEndDate,{x:1.5,y:3.0,w:7,h:0.45,fontSize:18,color:slate,align:'center'});
+                [['Balance From Previous Month',fmtC(parseFloat(prevBalance)),ice],['Church Operating Income','+ '+fmtC(tmChurchOp),green],['Total Expenses','- '+fmtC(thisMonthExpenseTotal),red],['Increase/Decrease',(increaseDecrease>=0?'+':'-')+' '+fmtC(increaseDecrease),increaseDecrease>=0?green:red]].forEach((item,i)=>{
+                    const y=3.9+(i*0.42),last=i===3;
+                    slide.addShape(pres.shapes.RECTANGLE,{x:1.8,y:y,w:6.4,h:0.4,fill:{color:last?'1A2332':darkSlate}});
+                    slide.addText(item[0],{x:2.0,y:y,w:3.5,h:0.4,fontSize:18,color:last?gold:white,bold:last,valign:'middle'});
+                    slide.addText(item[1],{x:5.8,y:y,w:2.2,h:0.4,fontSize:18,color:item[2],bold:last,align:'right',valign:'middle'});
+                });
+                // S7: Distribution of Funds - split into 2 slides
+                // S7a: Distribution
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'DISTRIBUTION OF FUNDS');
+                const vP=pptPF.filter(p=>p.balance!==0);
+                const dfRows=vP.length+4;const dfRH=Math.min(0.4,4.2/dfRows);let dy=1.1;
+                vP.forEach(p=>{slide.addShape(pres.shapes.RECTANGLE,{x:0.8,y:dy,w:8.4,h:dfRH-0.02,fill:{color:darkSlate}});slide.addText(p.name,{x:1.0,y:dy,w:4.5,h:dfRH-0.02,fontSize:16,color:white,valign:'middle'});slide.addText(fmtC(p.balance),{x:6,y:dy,w:3,h:dfRH-0.02,fontSize:16,color:white,align:'right',valign:'middle'});dy+=dfRH;});
+                dy+=0.04;slide.addShape(pres.shapes.RECTANGLE,{x:0.8,y:dy,w:8.4,h:dfRH+0.02,fill:{color:'1A2332'}});
+                slide.addText('Total Project Funds',{x:1.0,y:dy,w:4.5,h:dfRH+0.02,fontSize:17,color:purple,bold:true,valign:'middle'});
+                slide.addText(fmtC(totPF),{x:6,y:dy,w:3,h:dfRH+0.02,fontSize:17,color:purple,bold:true,align:'right',valign:'middle'});dy+=dfRH+0.08;
+                [['Church Operating Income',pCOA,green],['Conference Funds',pCF,ice],['Church Reserve',pRes,gold]].forEach(item=>{slide.addShape(pres.shapes.RECTANGLE,{x:0.8,y:dy,w:8.4,h:dfRH-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:1.0,y:dy,w:4.5,h:dfRH-0.02,fontSize:16,color:item[2],valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:dy,w:3,h:dfRH-0.02,fontSize:16,color:item[2],align:'right',valign:'middle'});dy+=dfRH;});
+                dy+=0.04;const lT=totPF+pCOA+pCF+pRes;
+                slide.addShape(pres.shapes.RECTANGLE,{x:0.8,y:dy,w:8.4,h:dfRH+0.04,fill:{color:'1A2332'}});
+                slide.addText('TOTALS',{x:1.0,y:dy,w:4.5,h:dfRH+0.04,fontSize:20,color:gold,bold:true,valign:'middle'});
+                slide.addText(fmtC(lT),{x:6,y:dy,w:3,h:dfRH+0.04,fontSize:20,color:gold,bold:true,align:'right',valign:'middle'});
+                // S7b: Represented By
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'REPRESENTED BY');
+                [['Unit Trust',pUT],['Chequing Account',pCheq],['Revolving Fund',pRF]].forEach((item,i)=>{const ry=1.3+(i*0.65);slide.addShape(pres.shapes.RECTANGLE,{x:1.5,y:ry,w:7,h:0.55,fill:{color:darkSlate}});slide.addText(item[0],{x:1.7,y:ry,w:3.5,h:0.55,fontSize:20,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:5.5,y:ry,w:2.8,h:0.55,fontSize:20,color:white,align:'right',valign:'middle'});});
+                slide.addShape(pres.shapes.RECTANGLE,{x:1.5,y:3.35,w:7,h:0.6,fill:{color:'1A2332'}});
+                slide.addText('TOTAL REPRESENTED BY',{x:1.7,y:3.35,w:3.5,h:0.6,fontSize:22,color:gold,bold:true,valign:'middle'});
+                slide.addText(fmtC(pRepT),{x:5.5,y:3.35,w:2.8,h:0.6,fontSize:22,color:gold,bold:true,align:'right',valign:'middle'});
+                // Match indicator
+                const balMatch=Math.abs(lT-pRepT)<0.01;
+                slide.addShape(pres.shapes.RECTANGLE,{x:2.5,y:4.3,w:5,h:0.6,fill:{color:darkSlate}});
+                slide.addText(balMatch?'BALANCED \u2713':'VARIANCE: '+fmtC(Math.abs(lT-pRepT)),{x:2.5,y:4.3,w:5,h:0.6,fontSize:22,color:balMatch?green:red,bold:true,align:'center',valign:'middle'});
+                // S8: Income vs Expenses
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'INCOME vs EXPENSES');
+                slide.addChart(pres.charts.BAR,[{name:'I',labels:['Church Operating','Expenses','Net'],values:[tmChurchOp,0,0]},{name:'E',labels:['Church Operating','Expenses','Net'],values:[0,thisMonthExpenseTotal,0]},{name:'N',labels:['Church Operating','Expenses','Net'],values:[0,0,Math.abs(netPosition)]}],{x:0.8,y:1.2,w:8.4,h:3.8,barDir:'col',barGrouping:'stacked',chartColors:[green,red,netPosition>=0?'059669':'DC2626'],showValue:true,dataLabelColor:white,dataLabelFontSize:16,catAxisLabelColor:slate,catAxisLabelFontSize:16,valGridLine:{color:'334155',size:0.5},catGridLine:{style:'none'},valAxisLabelColor:slate,showLegend:false,chartArea:{fill:{color:darkBg}}});
+                // S9: Thank You
+                slide=pres.addSlide();slide.background={color:darkBg};
+                slide.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:1.4,fill:{color:navy}});
+                slide.addShape(pres.shapes.RECTANGLE,{x:0,y:1.4,w:10,h:0.08,fill:{color:gold}});
+                slide.addText('Thank You',{x:0.8,y:2.0,w:8.4,h:1.0,fontSize:44,fontFace:'Georgia',color:white,bold:true,align:'center'});
+                slide.addText('Diego Martin SDA Church Treasury',{x:0.8,y:3.0,w:8.4,h:0.6,fontSize:22,fontFace:'Calibri',color:gold,align:'center'});
+                slide.addText('Financial Statement for '+monthName,{x:0.8,y:3.6,w:8.4,h:0.5,fontSize:18,fontFace:'Calibri',color:slate,align:'center'});
+                slide.addText('"The Lord loves a cheerful giver." \u2014 2 Corinthians 9:7',{x:1.5,y:4.4,w:7,h:0.5,fontSize:18,fontFace:'Georgia',color:ice,italic:true,align:'center'});
+                pres.writeFile({fileName:'Financial_Presentation_'+month+'.pptx'});
+            };
+
             return (
                 <div className="space-y-4">
                     {/* Controls */}
@@ -2265,6 +2414,7 @@
                                     <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
                                 </div>
                                 <button onClick={exportFinancialStatement} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm">📥 Export Statement</button>
+                                <button onClick={exportPresentation} className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm">📊 Presentation</button>
                                 <button onClick={() => window.print()} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🖨️ Print</button>
                             </div>
                         </div>
@@ -5565,11 +5715,18 @@
                         const unitTrustBalance = parseFloat(settings.unit_trust) || 79082.04;
                         const revolvingFundBalance = parseFloat(settings.revolving_fund) || 597996.24;
                         
-                        // Calculate Chequing Account Balance
-                        // Total Tithe Income - Total Expenses (all time for accurate balance)
-                        const totalDeposits = titheEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
-                        const totalExpensesAll = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const chequingBalance = totalDeposits - totalExpensesAll;
+                        // Calculate Chequing Account Balance = Reconciliation balance
+                        // prevBalance + churchOperating - expenses for the statement period
+                        const stmtMonthStr = settings.statement_month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+                        const [stmtY, stmtM] = stmtMonthStr.split('-').map(Number);
+                        const stmtMonthStart = `${stmtY}-${String(stmtM).padStart(2, '0')}-01`;
+                        const stmtMonthEnd = `${stmtY}-${String(stmtM).padStart(2, '0')}-${new Date(stmtY, stmtM, 0).getDate()}`;
+                        const stmtMonthEntries = titheEntries.filter(e => e.date >= stmtMonthStart && e.date <= stmtMonthEnd);
+                        const stmtMonthExpenses = expenses.filter(e => e.date >= stmtMonthStart && e.date <= stmtMonthEnd);
+                        const stmtMonthTotals = calculateTitheTotals(stmtMonthEntries, stmtMonthExpenses, 1);
+                        const stmtMonthExpenseTotal = stmtMonthExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const stmtPrevBalance = parseFloat(settings.previous_balance) || 0;
+                        const chequingBalance = stmtPrevBalance + (stmtMonthTotals.churchOperating || 0) - stmtMonthExpenseTotal;
                         
                         // Total "Represented by" = Unit Trust + Chequing + Revolving Fund
                         const representedByTotal = unitTrustBalance + chequingBalance + revolvingFundBalance;
@@ -6166,6 +6323,239 @@
             totals.churchOperating = totals.totalChurchFund - totals.percentage40;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;
             return totals;
+        }
+
+        // Start App - Submissions Review Component
+        function SubmissionsReview({ submissions, setSubmissions, supabase, titheEntries, loadData, saveEntry }) {
+            const [filter, setFilter] = useState('pending');
+            const [viewingSub, setViewingSub] = useState(null);
+            const [notes, setNotes] = useState('');
+            const [processing, setProcessing] = useState(false);
+            const [slipNumber, setSlipNumber] = useState('');
+            const pendingCount = submissions.filter(s => s.status === 'pending').length;
+            const filtered = submissions.filter(s => filter === 'all' || s.status === filter);
+            const CONF_FIELDS = [{ key:'tithe',label:'Tithes'},{key:'special_offering',label:'Special Offering'},{key:'ingathering',label:'Ingathering'},{key:'radio',label:'3ABN/Radio'},{key:'nehemiah',label:'Nehemiah'},{key:'sabbath_school',label:'Sabbath School'}];
+            const CHURCH_FIELDS = [{key:'budget_covenant',label:'Budget Covenant/Offerings'},{key:'welfare',label:'Welfare'},{key:'project',label:'Church Building Fund'},{key:'school',label:'Contributions to School'},{key:'pos_band',label:"Children's Home"},{key:'books',label:'Refunds'},{key:'raffa_house',label:'Choir'},{key:'tv',label:'Special Projects'},{key:'government_fund',label:'Church Project'},{key:'messages_of_hope',label:'Messages of Hope Radio'}];
+            const allFields = [...CONF_FIELDS,...CHURCH_FIELDS];
+            const fmtC = v => '$' + (parseFloat(v)||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            
+            // Get next slip number
+            React.useEffect(() => {
+                if (viewingSub && !slipNumber) {
+                    const maxSlip = titheEntries.reduce((m, e) => Math.max(m, parseInt(e.slip_number) || 0), 0);
+                    setSlipNumber(String(maxSlip + 1));
+                }
+            }, [viewingSub]);
+            
+            const approveSubmission = async () => {
+                if (!viewingSub) return;
+                setProcessing(true);
+                try {
+                    // Create tithe entry from submission
+                    const entryData = {
+                        date: viewingSub.submission_date,
+                        name: viewingSub.member_name,
+                        slip_number: parseInt(slipNumber) || 0,
+                    };
+                    allFields.forEach(f => { entryData[f.key] = parseFloat(viewingSub[f.key]) || 0; });
+                    // Calculate totals
+                    const confTotal = CONF_FIELDS.reduce((s,f) => s + (parseFloat(viewingSub[f.key])||0), 0);
+                    const churchTotal = CHURCH_FIELDS.reduce((s,f) => s + (parseFloat(viewingSub[f.key])||0), 0);
+                    entryData.total_conf_fund = confTotal;
+                    entryData.total_church_fund = churchTotal;
+                    entryData.total_received = confTotal + churchTotal;
+                    
+                    const { error: insertErr } = await supabase.from('tithe_entries').insert(entryData);
+                    if (insertErr) throw insertErr;
+                    
+                    // Update submission status
+                    await supabase.from('tithe_submissions').update({
+                        status: 'approved', reviewer_notes: notes, reviewed_at: new Date().toISOString()
+                    }).eq('id', viewingSub.id);
+                    
+                    setSubmissions(prev => prev.map(s => s.id === viewingSub.id ? {...s, status:'approved', reviewer_notes:notes} : s));
+                    setViewingSub(null); setNotes(''); setSlipNumber('');
+                    loadData(); // Refresh all data
+                    alert('Approved and added to tithes!');
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                } finally { setProcessing(false); }
+            };
+            
+            const rejectSubmission = async () => {
+                if (!viewingSub || !notes.trim()) { alert('Please add a note explaining the rejection'); return; }
+                setProcessing(true);
+                try {
+                    await supabase.from('tithe_submissions').update({
+                        status: 'rejected', reviewer_notes: notes, reviewed_at: new Date().toISOString()
+                    }).eq('id', viewingSub.id);
+                    setSubmissions(prev => prev.map(s => s.id === viewingSub.id ? {...s, status:'rejected', reviewer_notes:notes} : s));
+                    setViewingSub(null); setNotes('');
+                } catch (err) { alert('Error: ' + err.message); }
+                finally { setProcessing(false); }
+            };
+            
+            const deleteSubmission = async (id) => {
+                if (!confirm('Delete this submission permanently?')) return;
+                await supabase.from('tithe_submissions').delete().eq('id', id);
+                setSubmissions(prev => prev.filter(s => s.id !== id));
+            };
+
+            const shareLink = window.location.href.replace(/\/[^/]*$/, '/submit.html');
+            
+            return (
+                <div className="space-y-4">
+                    {/* Header with share link */}
+                    <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                            <div>
+                                <h3 className="text-white font-semibold">Online Tithe Submissions</h3>
+                                <p className="text-xs text-slate-400">{pendingCount} pending review</p>
+                            </div>
+                            <div className="flex gap-2">
+                                {['pending','approved','rejected','all'].map(f => (
+                                    <button key={f} onClick={() => setFilter(f)}
+                                        className={`px-3 py-1 rounded-lg text-xs font-medium capitalize ${filter===f ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
+                                        {f} {f==='pending' && pendingCount > 0 && <span className="ml-1 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-[10px]">{pendingCount}</span>}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-slate-900 rounded-lg p-2">
+                            <span className="text-xs text-slate-500 shrink-0">🔗 Share link:</span>
+                            <input type="text" readOnly value={shareLink} className="flex-1 bg-transparent text-xs text-amber-400 outline-none" />
+                            <button onClick={() => { navigator.clipboard.writeText(shareLink); alert('Link copied!'); }}
+                                className="px-2 py-1 bg-amber-500/20 text-amber-400 rounded text-xs hover:bg-amber-500/30">Copy</button>
+                        </div>
+                    </div>
+
+                    {/* Submissions List */}
+                    <div className="space-y-2">
+                        {filtered.length === 0 && (
+                            <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-8 text-center">
+                                <p className="text-slate-500">No {filter !== 'all' ? filter : ''} submissions</p>
+                            </div>
+                        )}
+                        {filtered.map(sub => (
+                            <div key={sub.id} className={`bg-slate-800/50 rounded-xl border p-4 cursor-pointer hover:border-amber-500/50 transition-colors ${sub.status==='pending'?'border-amber-500/30':sub.status==='approved'?'border-green-500/30':'border-red-500/30'}`}
+                                onClick={() => { setViewingSub(sub); setNotes(sub.reviewer_notes || ''); }}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-2 h-2 rounded-full ${sub.status==='pending'?'bg-amber-400':sub.status==='approved'?'bg-green-400':'bg-red-400'}`}></div>
+                                        <div>
+                                            <p className="text-white font-medium text-sm">{sub.member_name}</p>
+                                            <p className="text-xs text-slate-500">{new Date(sub.created_at).toLocaleDateString()} — Deposit: {sub.submission_date}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-amber-400 font-semibold">{fmtC(sub.total_amount)}</p>
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-medium ${sub.status==='pending'?'bg-amber-500/20 text-amber-400':sub.status==='approved'?'bg-green-500/20 text-green-400':'bg-red-500/20 text-red-400'}`}>{sub.status}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Detail/Review Modal */}
+                    {viewingSub && (
+                        <div className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                            <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-2xl my-8">
+                                <div className="p-5 border-b border-slate-700 flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-white font-bold text-lg">{viewingSub.member_name}</h3>
+                                        <p className="text-xs text-slate-400">Submitted {new Date(viewingSub.created_at).toLocaleString()} — Deposit date: {viewingSub.submission_date}</p>
+                                        {viewingSub.member_email && <p className="text-xs text-slate-500">📧 {viewingSub.member_email}</p>}
+                                        {viewingSub.member_phone && <p className="text-xs text-slate-500">📱 {viewingSub.member_phone}</p>}
+                                    </div>
+                                    <button onClick={() => { setViewingSub(null); setNotes(''); setSlipNumber(''); }} className="text-slate-400 hover:text-white text-xl">✕</button>
+                                </div>
+                                
+                                <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                                    {/* Amounts */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <h4 className="text-xs text-blue-400 font-semibold mb-2">Conference Funds</h4>
+                                            {CONF_FIELDS.map(f => (parseFloat(viewingSub[f.key])||0) > 0 && (
+                                                <div key={f.key} className="flex justify-between text-sm py-1 border-b border-slate-700/50">
+                                                    <span className="text-slate-300">{f.label}</span>
+                                                    <span className="text-white">{fmtC(viewingSub[f.key])}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs text-emerald-400 font-semibold mb-2">Church Funds</h4>
+                                            {CHURCH_FIELDS.map(f => (parseFloat(viewingSub[f.key])||0) > 0 && (
+                                                <div key={f.key} className="flex justify-between text-sm py-1 border-b border-slate-700/50">
+                                                    <span className="text-slate-300">{f.label}</span>
+                                                    <span className="text-white">{fmtC(viewingSub[f.key])}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 flex justify-between items-center">
+                                        <span className="text-amber-400 font-semibold">Total</span>
+                                        <span className="text-amber-400 font-bold text-xl">{fmtC(viewingSub.total_amount)}</span>
+                                    </div>
+                                    
+                                    {/* Deposit Screenshot */}
+                                    {viewingSub.deposit_screenshot_url && (
+                                        <div>
+                                            <h4 className="text-xs text-slate-400 font-semibold mb-2">Deposit Screenshot</h4>
+                                            <img src={viewingSub.deposit_screenshot_url} alt="Deposit" 
+                                                className="w-full rounded-lg border border-slate-600 max-h-72 object-contain bg-slate-900 cursor-pointer"
+                                                onClick={() => window.open(viewingSub.deposit_screenshot_url, '_blank')} />
+                                        </div>
+                                    )}
+                                    
+                                    {/* Slip Number + Notes (for pending) */}
+                                    {viewingSub.status === 'pending' && (
+                                        <>
+                                            <div>
+                                                <label className="text-xs text-slate-400 block mb-1">Slip Number</label>
+                                                <input type="number" value={slipNumber} onChange={e => setSlipNumber(e.target.value)}
+                                                    className="w-32 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-slate-400 block mb-1">Treasurer Notes</label>
+                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                                                    placeholder="Add notes (required for rejection)"
+                                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                                            </div>
+                                        </>
+                                    )}
+                                    {viewingSub.reviewer_notes && viewingSub.status !== 'pending' && (
+                                        <div className="bg-slate-900 rounded-lg p-3">
+                                            <p className="text-xs text-slate-400">Treasurer Notes:</p>
+                                            <p className="text-sm text-slate-300">{viewingSub.reviewer_notes}</p>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* Actions */}
+                                <div className="p-5 border-t border-slate-700 flex gap-3 justify-end">
+                                    {viewingSub.status === 'pending' ? (
+                                        <>
+                                            <button onClick={rejectSubmission} disabled={processing}
+                                                className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30">
+                                                ✕ Reject
+                                            </button>
+                                            <button onClick={approveSubmission} disabled={processing}
+                                                className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600">
+                                                {processing ? 'Processing...' : '✓ Approve & Create Tithe Entry'}
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button onClick={() => deleteSubmission(viewingSub.id)}
+                                            className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30">
+                                            🗑 Delete
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
         }
 
         // Start App

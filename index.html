@@ -6347,6 +6347,18 @@
                 }
             }, [viewingSub]);
             
+            // Helper: delete screenshot from storage
+            const deleteScreenshot = async (url) => {
+                if (!url) return;
+                try {
+                    const parts = url.split('/deposit-screenshots/');
+                    if (parts.length > 1) {
+                        const fileName = decodeURIComponent(parts[1]);
+                        await supabase.storage.from('deposit-screenshots').remove([fileName]);
+                    }
+                } catch (e) { console.log('Screenshot cleanup:', e.message); }
+            };
+
             const approveSubmission = async () => {
                 if (!viewingSub) return;
                 setProcessing(true);
@@ -6368,15 +6380,19 @@
                     const { error: insertErr } = await supabase.from('tithe_entries').insert(entryData);
                     if (insertErr) throw insertErr;
                     
-                    // Update submission status
+                    // Auto-delete screenshot from storage to save space
+                    await deleteScreenshot(viewingSub.deposit_screenshot_url);
+                    
+                    // Update submission status and clear screenshot URL
                     await supabase.from('tithe_submissions').update({
-                        status: 'approved', reviewer_notes: notes, reviewed_at: new Date().toISOString()
+                        status: 'approved', reviewer_notes: notes, reviewed_at: new Date().toISOString(),
+                        deposit_screenshot_url: null
                     }).eq('id', viewingSub.id);
                     
-                    setSubmissions(prev => prev.map(s => s.id === viewingSub.id ? {...s, status:'approved', reviewer_notes:notes} : s));
+                    setSubmissions(prev => prev.map(s => s.id === viewingSub.id ? {...s, status:'approved', reviewer_notes:notes, deposit_screenshot_url:null} : s));
                     setViewingSub(null); setNotes(''); setSlipNumber('');
                     loadData(); // Refresh all data
-                    alert('Approved and added to tithes!');
+                    alert('Approved and added to tithes! Screenshot auto-deleted.');
                 } catch (err) {
                     alert('Error: ' + err.message);
                 } finally { setProcessing(false); }
@@ -6386,10 +6402,14 @@
                 if (!viewingSub || !notes.trim()) { alert('Please add a note explaining the rejection'); return; }
                 setProcessing(true);
                 try {
+                    // Auto-delete screenshot from storage
+                    await deleteScreenshot(viewingSub.deposit_screenshot_url);
+                    
                     await supabase.from('tithe_submissions').update({
-                        status: 'rejected', reviewer_notes: notes, reviewed_at: new Date().toISOString()
+                        status: 'rejected', reviewer_notes: notes, reviewed_at: new Date().toISOString(),
+                        deposit_screenshot_url: null
                     }).eq('id', viewingSub.id);
-                    setSubmissions(prev => prev.map(s => s.id === viewingSub.id ? {...s, status:'rejected', reviewer_notes:notes} : s));
+                    setSubmissions(prev => prev.map(s => s.id === viewingSub.id ? {...s, status:'rejected', reviewer_notes:notes, deposit_screenshot_url:null} : s));
                     setViewingSub(null); setNotes('');
                 } catch (err) { alert('Error: ' + err.message); }
                 finally { setProcessing(false); }
@@ -6397,6 +6417,8 @@
             
             const deleteSubmission = async (id) => {
                 if (!confirm('Delete this submission permanently?')) return;
+                const sub = submissions.find(s => s.id === id);
+                if (sub) await deleteScreenshot(sub.deposit_screenshot_url);
                 await supabase.from('tithe_submissions').delete().eq('id', id);
                 setSubmissions(prev => prev.filter(s => s.id !== id));
             };

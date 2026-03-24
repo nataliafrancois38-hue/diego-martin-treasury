@@ -105,6 +105,8 @@
             { key: 'tv', label: 'Special Projects' },
             { key: 'government_fund', label: 'Church Project' },
             { key: 'messages_of_hope', label: 'Messages of Hope Radio' },
+            { key: 'adventurer', label: 'Adventurer Club' },
+            { key: 'pathfinder', label: 'Pathfinder Club' },
         ];
 
         const DEFAULT_EXPENSE_CATEGORIES = [
@@ -153,6 +155,8 @@
             'messages of hope': 'messages_of_hope',
             "children's home": 'pos_band',
             'children home': 'pos_band',
+            'adventurer': 'adventurer',
+            'pathfinder': 'pathfinder',
         };
 
         // Helper: get the linked tithe field for a project (explicit or auto-detected from name)
@@ -523,7 +527,7 @@
             const saveTitheEntry = async (entry) => {
                 try {
                     // Convert empty strings to 0 for numeric fields
-                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'sabbath_school', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'messages_of_hope', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
+                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'sabbath_school', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'messages_of_hope', 'adventurer', 'pathfinder', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
                     const cleanedEntry = { ...entry };
                     numericFields.forEach(field => {
                         if (cleanedEntry[field] === '' || cleanedEntry[field] === null || cleanedEntry[field] === undefined) {
@@ -1574,7 +1578,7 @@
                 ...initialData,
                 project_links: (() => { const d = initialData.project_links; if (!d) return {}; if (typeof d === 'string') { try { return JSON.parse(d); } catch { return {}; } } return d || {}; })()
             } : { 
-                date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', sabbath_school: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', project_links: {} 
+                date: today, slip_number: initialSlip, name: '', tithe: '', special_offering: '', ingathering: '', radio: '', nehemiah: '', budget_covenant: '', sabbath_school: '', welfare: '', pos_band: '', school: '', project: '', books: '', raffa_house: '', tv: '', government_fund: '', messages_of_hope: '', adventurer: '', pathfinder: '', project_links: {} 
             });
             const [saving, setSaving] = useState(false);
             const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -2403,31 +2407,31 @@
                     setFormula(`D${r}`, `B${r}+C${r}`, acctFmt);
                 });
                 
-                // Row 33: TOTAL CHURCH INCOME (formula: =SUM(B20:B32))
-                setCell('A33', 'TOTAL CHURCH INCOME');
-                setFormula('B33', 'SUM(B20:B32)', acctFmt);
-                setCell('C33', pmTotals.totalChurchFund || 0, acctFmt);
-                setFormula('D33', 'B33+C33', acctFmt);
-                
-                // Row 34: Less 40% (formula: =-B16)
-                setCell('A34', 'Less 40% to Local Conference');
-                setFormula('B34', '-B16', acctFmt);
-                setCell('C34', -Math.abs(pm40Percent), acctFmt);
+                // Row 34: TOTAL CHURCH INCOME (formula: =SUM(B20:B33))
+                setCell('A34', 'TOTAL CHURCH INCOME');
+                setFormula('B34', 'SUM(B20:B33)', acctFmt);
+                setCell('C34', pmTotals.totalChurchFund || 0, acctFmt);
                 setFormula('D34', 'B34+C34', acctFmt);
                 
-                // Row 35: TOTAL CHURCH OPERATING INCOME (formula: =B33+B34)
-                setCell('A35', 'TOTAL CHURCH OPERATING INCOME');
-                setFormula('B35', 'B33+B34', acctFmt);
-                setCell('C35', pmChurchOperating, acctFmt);
+                // Row 35: Less 40% (formula: =-B16)
+                setCell('A35', 'Less 40% to Local Conference');
+                setFormula('B35', '-B16', acctFmt);
+                setCell('C35', -Math.abs(pm40Percent), acctFmt);
                 setFormula('D35', 'B35+C35', acctFmt);
                 
-                // Row 36: empty
+                // Row 36: TOTAL CHURCH OPERATING INCOME (formula: =B34+B35)
+                setCell('A36', 'TOTAL CHURCH OPERATING INCOME');
+                setFormula('B36', 'B34+B35', acctFmt);
+                setCell('C36', pmChurchOperating, acctFmt);
+                setFormula('D36', 'B36+C36', acctFmt);
                 
-                // Row 37: EXPENDITURE header
-                setCell('A37', 'EXPENDITURE');
+                // Row 37: empty
                 
-                // Rows 38+: Expense categories
-                let expRow = 38;
+                // Row 38: EXPENDITURE header
+                setCell('A38', 'EXPENDITURE');
+                
+                // Rows 39+: Expense categories
+                let expRow = 39;
                 EXPENSE_CATEGORIES.forEach(dept => {
                     if (!dept) return;
                     const tmExp = getExpenseByDept(dept, monthExpenses);
@@ -2457,10 +2461,10 @@
                 setCell(`A${reconPrev}`, 'Balance From Previous Month');
                 setCell(`B${reconPrev}`, parseFloat(prevBalance), acctFmt);
                 
-                // Balance as at (formula: =BprevBalance+B35-Btotalexp)
+                // Balance as at (formula: =BprevBalance+B36-Btotalexp)
                 const reconBal = reconPrev + 1;
                 setCell(`A${reconBal}`, `Balance as at: ${monthEndDate}`);
-                setFormula(`B${reconBal}`, `B${reconPrev}+B35-B${totalExpRow}`, acctFmt);
+                setFormula(`B${reconBal}`, `B${reconPrev}+B36-B${totalExpRow}`, acctFmt);
                 
                 // Increase/Decrease (formula: =Bbal-Bprev)
                 const reconInc = reconBal + 1;
@@ -2489,10 +2493,10 @@
                 setCell(`B${r}`, totalProjectFunds, acctFmt);
                 r += 2;
                 
-                // Church Operating Income (formula: =B35)
+                // Church Operating Income (formula: =B36)
                 const coiRow = r;
                 setCell(`A${r}`, 'Church Operating Income (60%)');
-                setFormula(`B${r}`, 'B35', acctFmt);
+                setFormula(`B${r}`, 'B36', acctFmt);
                 setCell(`C${r}`, 'Unit Trust');
                 setCell(`D${r}`, parseFloat(unitTrust), acctFmt);
                 r++;
@@ -2540,21 +2544,37 @@
                 pres.author = 'Diego Martin SDA Treasury';
                 pres.title = 'Financial Statement - ' + monthName;
                 const tmTotals = thisMonthTotals;
+                const pmTotals = prevMonthTotals;
                 const fmtC = (v) => '$' + Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
                 const navy='1E2761',darkBg='0F172A',gold='F59E0B',white='FFFFFF',ice='CADCFC',green='10B981',red='EF4444',slate='94A3B8',darkSlate='1E293B',purple='8B5CF6';
                 const tmBudgetCovenant=tmTotals.budget_covenant||0, tmChildrensHome=tmTotals.pos_band||0;
-                const tm40Pct=tmTotals.percentage40||0, tmChurchOp=tmTotals.churchOperating||0;
+                const tm40Pct=Math.abs(tmTotals.percentage40||0), tmChurchOp=tmTotals.churchOperating||0;
                 const tmTotalChurchIncome=tmTotals.totalChurchFund||0;
                 const tmSubTotalConf=(tmTotals.tithe||0)+(tmTotals.special_offering||0)+(tmTotals.ingathering||0)+(tmTotals.nehemiah||0)+(tmTotals.radio||0);
                 const tmTotalConf=tmSubTotalConf+tm40Pct;
+                // Previous months
+                const pmSubTotalConf=(pmTotals.tithe||0)+(pmTotals.special_offering||0)+(pmTotals.ingathering||0)+(pmTotals.nehemiah||0)+(pmTotals.radio||0);
+                const pm40Pct=Math.abs(pmTotals.percentage40||0);
+                const pmTotalConf=pmSubTotalConf+pm40Pct;
+                const pmChurchOp=pmTotals.churchOperating||0;
+                const pmTotalChurchIncome=pmTotals.totalChurchFund||0;
+                // Totals (YTD)
+                const ytdSubTotalConf=tmSubTotalConf+pmSubTotalConf;
+                const ytd40Pct=tm40Pct+pm40Pct;
+                const ytdTotalConf=tmTotalConf+pmTotalConf;
+                const ytdChurchOp=tmChurchOp+pmChurchOp;
+                const ytdTotalChurchIncome=tmTotalChurchIncome+pmTotalChurchIncome;
+                
                 const reconBalance=parseFloat(prevBalance)+tmChurchOp-thisMonthExpenseTotal;
                 const increaseDecrease=tmChurchOp-thisMonthExpenseTotal;
                 const netPosition=increaseDecrease;
-                // Distribution data
+                // Distribution data - filtered up to selected month
                 const allPrj=projects||[];
-                const pptPF=allPrj.map(p=>{const ob=parseFloat(p.opening_balance)||0;let inc=0;const lf=getProjectLinkedField(p);titheEntries.forEach(t=>{const hpid=t.project_id===p.id;if(hpid)inc+=(parseFloat(t.project)||0)+(parseFloat(t.government_fund)||0);if(lf&&t[lf]&&!(hpid&&(lf==='project'||lf==='government_fund')))inc+=parseFloat(t[lf])||0;if(t.project_links){try{const lk=typeof t.project_links==='string'?JSON.parse(t.project_links):t.project_links;Object.entries(lk).forEach(([fk,pid])=>{if(fk===lf)return;if(pid===p.id)inc+=parseFloat(t[fk])||0;});}catch(e){}}});const sp=expenses.filter(e=>e.project_id===p.id).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{name:p.name,balance:ob+inc-sp};});
+                const entriesUpToMonth=titheEntries.filter(e=>e.date<=monthEnd);
+                const expensesUpToMonth=expenses.filter(e=>e.date<=monthEnd);
+                const pptPF=allPrj.map(p=>{const ob=parseFloat(p.opening_balance)||0;let inc=0;const lf=getProjectLinkedField(p);entriesUpToMonth.forEach(t=>{const hpid=t.project_id===p.id;if(hpid)inc+=(parseFloat(t.project)||0)+(parseFloat(t.government_fund)||0);if(lf&&t[lf]&&!(hpid&&(lf==='project'||lf==='government_fund')))inc+=parseFloat(t[lf])||0;if(t.project_links){try{const lk=typeof t.project_links==='string'?JSON.parse(t.project_links):t.project_links;Object.entries(lk).forEach(([fk,pid])=>{if(fk===lf)return;if(pid===p.id)inc+=parseFloat(t[fk])||0;});}catch(e){}}});const sp=expensesUpToMonth.filter(e=>e.project_id===p.id).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{name:p.name,balance:ob+inc-sp};});
                 const totPF=pptPF.reduce((s,p)=>s+p.balance,0);
-                const pCOA=allTimeTotals.churchOperating||0;
+                const pCOA=tmChurchOp; // This month's church operating for distribution
                 const pCheq=reconBalance,pUT=parseFloat(unitTrust),pRF=parseFloat(revolvingFund);
                 const pRepT=pUT+pCheq+pRF,pRes=pRepT-totPF-pCOA;
                 const addH=(sl,t)=>{sl.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.9,fill:{color:navy}});sl.addText(t,{x:0.5,y:0.1,w:9,h:0.7,fontSize:28,fontFace:'Georgia',color:white,bold:true});};
@@ -2582,24 +2602,51 @@
                 slide.addShape(pres.shapes.RECTANGLE,{x:5.2,y:4.35,w:4.3,h:1.0,fill:{color:darkSlate}});
                 slide.addText('Tithes Collected',{x:5.4,y:4.38,w:3.9,h:0.38,fontSize:16,color:slate});
                 slide.addText(fmtC(tmTotals.tithe||0),{x:5.4,y:4.72,w:3.9,h:0.55,fontSize:26,fontFace:'Calibri',color:ice,bold:true});
-                // S3: Conference
+                // S3: Conference Funds with 3-column comparison
                 slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'CONFERENCE FUNDS');
-                [['Tithes',fmtC(tmTotals.tithe||0),false,false],['Special Offering',fmtC(tmTotals.special_offering||0),false,false],['Ingathering',fmtC(tmTotals.ingathering||0),false,false],['Nehemiah',fmtC(tmTotals.nehemiah||0),false,false],['3ABN/Radio',fmtC(tmTotals.radio||0),false,false],['Sub Total Conference',fmtC(tmSubTotalConf),true,false],['40% Church Offering','('+fmtC(tm40Pct)+')',false,true],['TOTAL CONFERENCE FUNDS',fmtC(tmTotalConf),true,false]].forEach((item,i)=>{
-                    const y=1.2+(i*0.52),bg=item[2]?'1A2332':darkSlate,clr=item[2]?gold:item[3]?ice:white;
-                    slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:5.5,h:0.48,fill:{color:bg}});
-                    slide.addText(item[0],{x:0.7,y:y,w:3.5,h:0.48,fontSize:18,color:clr,bold:item[2],valign:'middle'});
-                    slide.addText(item[1],{x:4.2,y:y,w:1.6,h:0.48,fontSize:18,color:clr,bold:item[2],align:'right',valign:'middle'});
+                // Column headers
+                slide.addText('This Month',{x:4.5,y:1.0,w:1.8,h:0.35,fontSize:12,color:gold,bold:true,align:'center'});
+                slide.addText('Prev Months',{x:6.3,y:1.0,w:1.8,h:0.35,fontSize:12,color:slate,bold:true,align:'center'});
+                slide.addText('Total YTD',{x:8.1,y:1.0,w:1.6,h:0.35,fontSize:12,color:ice,bold:true,align:'center'});
+                const confItems=[
+                    ['Tithes',tmTotals.tithe||0,pmTotals.tithe||0],
+                    ['Special Offering',tmTotals.special_offering||0,pmTotals.special_offering||0],
+                    ['Ingathering',tmTotals.ingathering||0,pmTotals.ingathering||0],
+                    ['Nehemiah',tmTotals.nehemiah||0,pmTotals.nehemiah||0],
+                    ['3ABN/Radio',tmTotals.radio||0,pmTotals.radio||0],
+                    ['Sub Total Conference',tmSubTotalConf,pmSubTotalConf],
+                    ['40% Church Offering',tm40Pct,pm40Pct],
+                    ['TOTAL CONFERENCE',tmTotalConf,pmTotalConf],
+                ];
+                confItems.forEach((item,i)=>{
+                    const y=1.4+(i*0.44),isTotal=i>=5,bg=isTotal?'1A2332':darkSlate,clr=isTotal?gold:white;
+                    slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9.2,h:0.42,fill:{color:bg}});
+                    slide.addText(item[0],{x:0.7,y:y,w:3.6,h:0.42,fontSize:16,color:clr,bold:isTotal,valign:'middle'});
+                    slide.addText(fmtC(item[1]),{x:4.5,y:y,w:1.8,h:0.42,fontSize:15,color:clr,align:'right',valign:'middle'});
+                    slide.addText(fmtC(item[2]),{x:6.3,y:y,w:1.8,h:0.42,fontSize:15,color:slate,align:'right',valign:'middle'});
+                    slide.addText(fmtC(item[1]+item[2]),{x:8.1,y:y,w:1.6,h:0.42,fontSize:15,color:ice,bold:isTotal,align:'right',valign:'middle'});
                 });
-                const cL=['Tithes','Sp.Off','Ingathering','Nehemiah','3ABN','40%'],cV=[tmTotals.tithe||0,tmTotals.special_offering||0,tmTotals.ingathering||0,tmTotals.nehemiah||0,tmTotals.radio||0,tm40Pct];
-                const nL=cL.filter((_,i)=>cV[i]>0),nV=cV.filter(v=>v>0);
-                if(nL.length>0)slide.addChart(pres.charts.DOUGHNUT,[{name:'C',labels:nL,values:nV}],{x:6.2,y:1.1,w:3.5,h:3.5,showPercent:true,showTitle:false,chartColors:['2563EB','7C3AED','059669','D97706','DC2626','0891B2'],dataLabelColor:white,dataLabelFontSize:12,chartArea:{fill:{color:darkBg}}});
-                // S4: Church Income - full width, dynamic row height
-                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'CHURCH INCOME');
-                const cFI=[['Budget Covenant/Offerings',tmBudgetCovenant],['Welfare',tmTotals.welfare||0],['Church Building Fund',tmTotals.project||0],['Contribution to School',tmTotals.school||0],["Children's Home",tmChildrensHome],['Special Project',tmTotals.tv||0],['Church Project',tmTotals.government_fund||0],['Messages of Hope Radio',tmTotals.messages_of_hope||0],['Refunds',tmTotals.books||0]].filter(i=>i[1]>0);
-                const ciRows=cFI.length+3;const ciRH=Math.min(0.38,4.0/ciRows);const ciStart=1.1;
-                cFI.forEach((item,i)=>{const y=ciStart+(i*ciRH);slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:ciRH-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:0.7,y:y,w:5,h:ciRH-0.02,fontSize:16,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:y,w:3.3,h:ciRH-0.02,fontSize:16,color:white,align:'right',valign:'middle'});});
-                const ciTY=ciStart+(cFI.length*ciRH)+0.06;
-                [['TOTAL CHURCH INCOME',fmtC(tmTotalChurchIncome),gold],['Less 40% to Conference','('+fmtC(tm40Pct)+')',red],['CHURCH OPERATING INCOME',fmtC(tmChurchOp),green]].forEach((item,i)=>{const y=ciTY+(i*(ciRH+0.04)),bg=(i===0||i===2)?'1A2332':darkSlate;slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:ciRH+0.02,fill:{color:bg}});slide.addText(item[0],{x:0.7,y:y,w:5,h:ciRH+0.02,fontSize:18,color:item[2],bold:true,valign:'middle'});slide.addText(item[1],{x:6,y:y,w:3.3,h:ciRH+0.02,fontSize:18,color:item[2],bold:true,align:'right',valign:'middle'});});
+                // S4: Church Income with 3-column comparison
+                slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'CHURCH FUNDS');
+                slide.addText('This Month',{x:4.5,y:1.0,w:1.8,h:0.35,fontSize:12,color:gold,bold:true,align:'center'});
+                slide.addText('Prev Months',{x:6.3,y:1.0,w:1.8,h:0.35,fontSize:12,color:slate,bold:true,align:'center'});
+                slide.addText('Total YTD',{x:8.1,y:1.0,w:1.6,h:0.35,fontSize:12,color:ice,bold:true,align:'center'});
+                const churchSlipItems=CHURCH_FIELDS.map(f=>[f.label,tmTotals[f.key]||0,pmTotals[f.key]||0]).filter(r=>r[1]>0||r[2]>0);
+                churchSlipItems.push(['TOTAL CHURCH INCOME',tmTotalChurchIncome,pmTotalChurchIncome]);
+                churchSlipItems.push(['Less 40% to Conference',-tm40Pct,-pm40Pct]);
+                churchSlipItems.push(['CHURCH OPERATING INCOME',tmChurchOp,pmChurchOp]);
+                const ciRH=Math.min(0.38,4.0/churchSlipItems.length);let ciY=1.4;
+                churchSlipItems.forEach((item,i)=>{
+                    const isTotal=i>=churchSlipItems.length-3,bg=isTotal?'1A2332':darkSlate;
+                    const clr=i===churchSlipItems.length-1?green:i===churchSlipItems.length-2?red:isTotal?gold:white;
+                    slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:ciY,w:9.2,h:ciRH,fill:{color:bg}});
+                    slide.addText(item[0],{x:0.7,y:ciY,w:3.6,h:ciRH,fontSize:14,color:clr,bold:isTotal,valign:'middle'});
+                    slide.addText(item[1]<0?'('+fmtC(item[1])+')':fmtC(item[1]),{x:4.5,y:ciY,w:1.8,h:ciRH,fontSize:13,color:clr,align:'right',valign:'middle'});
+                    slide.addText(item[2]<0?'('+fmtC(item[2])+')':fmtC(item[2]),{x:6.3,y:ciY,w:1.8,h:ciRH,fontSize:13,color:slate,align:'right',valign:'middle'});
+                    const tot=item[1]+item[2];
+                    slide.addText(tot<0?'('+fmtC(tot)+')':fmtC(tot),{x:8.1,y:ciY,w:1.6,h:ciRH,fontSize:13,color:ice,bold:isTotal,align:'right',valign:'middle'});
+                    ciY+=ciRH+0.02;
+                });
                 // S5: Expenditure - full width, dynamic row height, split to 2 slides if >10
                 const eI=[];EXPENSE_CATEGORIES.forEach(d=>{if(!d)return;const a=monthExpenses.filter(e=>e.department===d).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);if(a>0)eI.push([d,a]);});eI.sort((a,b)=>b[1]-a[1]);
                 const maxPerSlide=10;
@@ -2876,6 +2923,106 @@
                             </div>
                         </div>
                     </div>
+
+                    {/* Fund Distribution Report for Selected Month */}
+                    {(() => {
+                        const entriesUpToMonth = titheEntries.filter(e => e.date <= monthEnd);
+                        const expensesUpToMonth = expenses.filter(e => e.date <= monthEnd);
+                        const allPrj = projects || [];
+                        
+                        const stmtProjectFunds = allPrj.map(p => {
+                            const ob = parseFloat(p.opening_balance) || 0;
+                            let inc = 0;
+                            const lf = getProjectLinkedField(p);
+                            entriesUpToMonth.forEach(t => {
+                                const hpid = t.project_id === p.id;
+                                if (hpid) inc += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                                if (lf && t[lf] && !(hpid && (lf === 'project' || lf === 'government_fund'))) inc += parseFloat(t[lf]) || 0;
+                                if (t.project_links) {
+                                    try {
+                                        const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                                        Object.entries(links).forEach(([fk, pid]) => { if (fk === lf) return; if (pid === p.id) inc += parseFloat(t[fk]) || 0; });
+                                    } catch (e) {}
+                                }
+                            });
+                            const sp = expensesUpToMonth.filter(e => e.project_id === p.id).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                            return { name: p.name, balance: ob + inc - sp };
+                        });
+                        const stmtTotalProjectFunds = stmtProjectFunds.reduce((s, p) => s + p.balance, 0);
+                        const stmtChurchOp = thisMonthTotals.churchOperating || 0;
+                        const stmtTotalAllocated = stmtTotalProjectFunds + stmtChurchOp;
+                        const stmtUT = parseFloat(unitTrust) || 0;
+                        const stmtRF = parseFloat(revolvingFund) || 0;
+                        const stmtCheq = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal;
+                        const stmtRepTotal = stmtUT + stmtCheq + stmtRF;
+                        const stmtReserves = stmtRepTotal - stmtTotalAllocated;
+                        
+                        return (
+                            <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6 mt-4">
+                                <h3 className="text-lg font-bold text-purple-400 mb-4">Fund Distribution — as at {monthName}</h3>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+                                        <h4 className="text-sm font-semibold text-emerald-400 mb-4 pb-2 border-b border-slate-600">FUNDS</h4>
+                                        <div className="mb-4">
+                                            <p className="text-xs text-slate-500 font-medium mb-2">PROJECT FUNDS</p>
+                                            {stmtProjectFunds.map((p, idx) => (
+                                                <div key={idx} className="flex justify-between py-1.5 border-b border-slate-700/50">
+                                                    <span className="text-slate-300 text-sm">{p.name}</span>
+                                                    <span className={`text-sm font-medium ${p.balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtCur(p.balance)}</span>
+                                                </div>
+                                            ))}
+                                            <div className="flex justify-between py-2 mt-1 bg-emerald-500/10 rounded px-2">
+                                                <span className="text-emerald-400 font-medium text-sm">Total Project Funds</span>
+                                                <span className="text-emerald-400 font-bold">{fmtCur(stmtTotalProjectFunds)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between py-2 border-b border-slate-600">
+                                            <span className="text-cyan-400 text-sm">Church Operating Income (60%)</span>
+                                            <span className="text-cyan-400 font-medium">{fmtCur(stmtChurchOp)}</span>
+                                        </div>
+                                        <div className="flex justify-between py-3 bg-purple-500/20 rounded-lg px-3 mt-4">
+                                            <span className="text-purple-400 font-bold">TOTAL ALLOCATED FUNDS</span>
+                                            <span className="text-purple-400 font-bold text-lg">{fmtCur(stmtTotalAllocated)}</span>
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-slate-600">
+                                            <div className="flex justify-between py-2">
+                                                <span className="text-amber-400 text-sm">Church Reserves</span>
+                                                <span className={`font-medium ${stmtReserves >= 0 ? 'text-amber-400' : 'text-red-400'}`}>{fmtCur(stmtReserves)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between py-3 bg-blue-500/20 rounded-lg px-3 mt-4 border-2 border-blue-500/50">
+                                            <span className="text-blue-400 font-bold">BALANCE</span>
+                                            <span className="text-blue-400 font-bold text-lg">{fmtCur(stmtTotalAllocated + stmtReserves)}</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+                                        <h4 className="text-sm font-semibold text-blue-400 mb-4 pb-2 border-b border-slate-600">REPRESENTED BY</h4>
+                                        <div className="space-y-4">
+                                            <div className="p-4 bg-purple-500/10 rounded-lg border border-purple-500/30">
+                                                <p className="text-xs text-slate-400 mb-1">Unit Trust</p>
+                                                <p className="text-xl font-bold text-purple-400">{fmtCur(stmtUT)}</p>
+                                            </div>
+                                            <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
+                                                <p className="text-xs text-slate-400 mb-1">Chequing Account</p>
+                                                <p className="text-xl font-bold text-blue-400">{fmtCur(stmtCheq)}</p>
+                                            </div>
+                                            <div className="p-4 bg-teal-500/10 rounded-lg border border-teal-500/30">
+                                                <p className="text-xs text-slate-400 mb-1">Revolving Fund</p>
+                                                <p className="text-xl font-bold text-teal-400">{fmtCur(stmtRF)}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between py-3 bg-blue-500/20 rounded-lg px-3 mt-4 border-2 border-blue-500/50">
+                                            <span className="text-blue-400 font-bold">TOTAL REPRESENTED BY</span>
+                                            <span className="text-blue-400 font-bold text-lg">{fmtCur(stmtRepTotal)}</span>
+                                        </div>
+                                        <p className={`text-xs font-bold mt-3 text-center ${Math.abs((stmtTotalAllocated + stmtReserves) - stmtRepTotal) < 0.01 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {Math.abs((stmtTotalAllocated + stmtReserves) - stmtRepTotal) < 0.01 ? '✓ BALANCED' : '✗ VARIANCE: ' + fmtCur(Math.abs((stmtTotalAllocated + stmtReserves) - stmtRepTotal))}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         }
@@ -5039,7 +5186,9 @@
             const [selectedCovenantMembers, setSelectedCovenantMembers] = useState([]);
             const [covenantPastor, setCovenantPastor] = useState('');
             const [covenantTreasurer, setCovenantTreasurer] = useState('');
-
+            
+            // Cheque Register state
+            const [chequeView, setChequeView] = useState('all');
             // Filter entries by date range and sort by date then slip number
             const filteredTithes = titheEntries.filter(e => {
                 const matchDate = e.date >= startDate && e.date <= endDate;
@@ -6123,17 +6272,41 @@
 
                     {/* Fund Distribution Report */}
                     {reportType === 'fundDistribution' && (() => {
-                        // Calculate all project balances
+                        // Calculate project balances filtered up to endDate
                         const allProjects = projects || [];
-                        const projectFunds = allProjects.map(p => ({
-                            name: p.name,
-                            status: p.status,
-                            balance: getProjectFinancials(p.id).balance
-                        }));
+                        const entriesUpTo = titheEntries.filter(e => e.date <= endDate);
+                        const expensesUpTo = expenses.filter(e => e.date <= endDate);
+                        
+                        const projectFunds = allProjects.map(p => {
+                            const openingBalance = parseFloat(p.opening_balance) || 0;
+                            let income = 0;
+                            entriesUpTo.forEach(t => {
+                                const linkedField = getProjectLinkedField(p);
+                                const hasProjectId = t.project_id === p.id;
+                                if (hasProjectId) {
+                                    income += (parseFloat(t.project) || 0) + (parseFloat(t.government_fund) || 0);
+                                }
+                                if (linkedField && t[linkedField] && !(hasProjectId && (linkedField === 'project' || linkedField === 'government_fund'))) {
+                                    income += parseFloat(t[linkedField]) || 0;
+                                }
+                                if (t.project_links) {
+                                    try {
+                                        const links = typeof t.project_links === 'string' ? JSON.parse(t.project_links) : t.project_links;
+                                        Object.entries(links).forEach(([fieldKey, linkedProjectId]) => {
+                                            if (fieldKey === linkedField) return;
+                                            if (linkedProjectId === p.id) income += parseFloat(t[fieldKey]) || 0;
+                                        });
+                                    } catch (e) { }
+                                }
+                            });
+                            const spent = expensesUpTo.filter(e => e.project_id === p.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                            return { name: p.name, status: p.status, balance: openingBalance + income - spent };
+                        });
                         const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
                         
-                        // Church Operating Income (60%)
-                        const churchOperatingIncome = filteredTotals.churchOperating;
+                        // Church Operating Income (60%) - filtered by date range
+                        const filteredUpToTotals = calculateTitheTotals(entriesUpTo, expensesUpTo);
+                        const churchOperatingIncome = filteredUpToTotals.churchOperating;
                         
                         // Total Allocated Funds (Projects + Church Operating)
                         const totalAllocatedFunds = totalProjectFunds + churchOperatingIncome;
@@ -6142,18 +6315,10 @@
                         const unitTrustBalance = parseFloat(settings.unit_trust) || 79082.04;
                         const revolvingFundBalance = parseFloat(settings.revolving_fund) || 597996.24;
                         
-                        // Calculate Chequing Account Balance = Reconciliation balance
-                        // prevBalance + churchOperating - expenses for the statement period
-                        const stmtMonthStr = settings.statement_month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-                        const [stmtY, stmtM] = stmtMonthStr.split('-').map(Number);
-                        const stmtMonthStart = `${stmtY}-${String(stmtM).padStart(2, '0')}-01`;
-                        const stmtMonthEnd = `${stmtY}-${String(stmtM).padStart(2, '0')}-${new Date(stmtY, stmtM, 0).getDate()}`;
-                        const stmtMonthEntries = titheEntries.filter(e => e.date >= stmtMonthStart && e.date <= stmtMonthEnd);
-                        const stmtMonthExpenses = expenses.filter(e => e.date >= stmtMonthStart && e.date <= stmtMonthEnd);
-                        const stmtMonthTotals = calculateTitheTotals(stmtMonthEntries, stmtMonthExpenses, 1);
-                        const stmtMonthExpenseTotal = stmtMonthExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        // Calculate Chequing Account Balance using filtered data
                         const stmtPrevBalance = parseFloat(settings.previous_balance) || 0;
-                        const chequingBalance = stmtPrevBalance + (stmtMonthTotals.churchOperating || 0) - stmtMonthExpenseTotal;
+                        const filteredUpToExpenseTotal = expensesUpTo.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                        const chequingBalance = stmtPrevBalance + (filteredUpToTotals.churchOperating || 0) - filteredUpToExpenseTotal;
                         
                         // Total "Represented by" = Unit Trust + Chequing + Revolving Fund
                         const representedByTotal = unitTrustBalance + chequingBalance + revolvingFundBalance;
@@ -6274,12 +6439,7 @@
                                                     <p className="text-xl font-bold text-blue-400">{fmtCur(chequingBalance)}</p>
                                                     <div className="mt-2 pt-2 border-t border-slate-700 text-xs">
                                                         <div className="flex justify-between text-slate-500">
-                                                            <span>Total Deposits</span>
-                                                            <span className="text-emerald-400">{fmtCur(totalDeposits)}</span>
-                                                        </div>
-                                                        <div className="flex justify-between text-slate-500">
-                                                            <span>Less: Total Expenses</span>
-                                                            <span className="text-red-400">-{fmtCur(totalExpensesAll)}</span>
+                                                            <span>Prev Balance + Operating - Expenses</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -6720,7 +6880,6 @@
                         const cashedTotal = cashedExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         const uncashedTotal = uncashedExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                         
-                        const [chequeView, setChequeView] = useState('all');
                         const displayExpenses = chequeView === 'cashed' ? cashedExpenses : chequeView === 'uncashed' ? uncashedExpenses : chequeExpenses;
                         
                         return (

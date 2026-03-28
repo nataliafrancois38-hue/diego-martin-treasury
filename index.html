@@ -107,6 +107,8 @@
             { key: 'messages_of_hope', label: 'Messages of Hope Radio' },
             { key: 'adventurer', label: 'Adventurer Club' },
             { key: 'pathfinder', label: 'Pathfinder Club' },
+            { key: 'funeral', label: 'Funeral Fund' },
+            { key: 'camp', label: 'Camp' },
         ];
 
         const DEFAULT_EXPENSE_CATEGORIES = [
@@ -157,6 +159,8 @@
             'children home': 'pos_band',
             'adventurer': 'adventurer',
             'pathfinder': 'pathfinder',
+            'funeral': 'funeral',
+            'camp': 'camp',
         };
 
         // Helper: get the linked tithe field for a project (explicit or auto-detected from name)
@@ -7001,7 +7005,7 @@
             const pendingCount = submissions.filter(s => s.status === 'pending').length;
             const filtered = submissions.filter(s => filter === 'all' || s.status === filter);
             const CONF_FIELDS = [{ key:'tithe',label:'Tithes'},{key:'special_offering',label:'Special Offering'},{key:'ingathering',label:'Ingathering'},{key:'radio',label:'3ABN/Radio'},{key:'nehemiah',label:'Nehemiah'}];
-            const CHURCH_FIELDS = [{key:'budget_covenant',label:'Budget Covenant/Offerings'},{key:'welfare',label:'Welfare'},{key:'project',label:'Church Building Fund'},{key:'school',label:'Contributions to School'},{key:'pos_band',label:"Children's Home"},{key:'books',label:'Refunds'},{key:'raffa_house',label:'Choir'},{key:'tv',label:'Special Projects'},{key:'government_fund',label:'Church Project'},{key:'messages_of_hope',label:'Messages of Hope Radio'}];
+            const CHURCH_FIELDS = [{key:'budget_covenant',label:'Budget Covenant/Offerings'},{key:'welfare',label:'Welfare'},{key:'project',label:'Church Building Fund'},{key:'school',label:'Contributions to School'},{key:'pos_band',label:"Children's Home"},{key:'books',label:'Refunds'},{key:'raffa_house',label:'Choir'},{key:'tv',label:'Special Projects'},{key:'government_fund',label:'Church Project'},{key:'messages_of_hope',label:'Messages of Hope Radio'},{key:'funeral',label:'Funeral Fund'},{key:'camp',label:'Camp'}];
             const allFields = [...CONF_FIELDS,...CHURCH_FIELDS];
             const fmtC = v => '$' + (parseFloat(v)||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             

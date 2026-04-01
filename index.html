@@ -194,7 +194,14 @@
                         return;
                     }
 
-                    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        auth: {
+                            storage: window.sessionStorage,
+                            autoRefreshToken: true,
+                            persistSession: true,
+                            detectSessionInUrl: true
+                        }
+                    });
                     setSupabaseClient(client);
 
                     // Add timeout for slow connections

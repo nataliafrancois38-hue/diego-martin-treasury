@@ -194,6 +194,13 @@
                         return;
                     }
 
+                    // Clear any old localStorage auth sessions (migrating to sessionStorage)
+                    Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('sb-') && key.includes('auth')) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+
                     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                         auth: {
                             storage: window.sessionStorage,
@@ -311,8 +318,11 @@
 
                 try {
                     if (isForgotPassword) {
+                        const redirectUrl = window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
+                            ? 'https://nataliafrancois38-hue.github.io/diego-martin-treasury/'
+                            : window.location.origin + window.location.pathname;
                         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                            redirectTo: window.location.origin + window.location.pathname
+                            redirectTo: redirectUrl
                         });
                         if (error) throw error;
                         setMessage('Password reset email sent! Check your inbox.');
@@ -331,7 +341,11 @@
                         setIsLogin(true);
                     }
                 } catch (err) {
-                    setError(err.message);
+                    if (err.message === 'Invalid login credentials') {
+                        setError('Incorrect email or password. Please try again, or use "Forgot Password?" to reset.');
+                    } else {
+                        setError(err.message);
+                    }
                 } finally {
                     setLoading(false);
                 }

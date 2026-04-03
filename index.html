@@ -203,12 +203,22 @@
 
                     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                         auth: {
-                            storage: window.sessionStorage,
                             autoRefreshToken: true,
                             persistSession: true,
                             detectSessionInUrl: true
                         }
                     });
+
+                    // Auto-logout on tab/window close (but not on refresh or navigation)
+                    // We use a sessionStorage flag to detect true browser close vs refresh
+                    if (!sessionStorage.getItem('dm_session_active')) {
+                        // New session (browser was closed and reopened) - sign out any stale session
+                        const staleCheck = await client.auth.getSession();
+                        if (staleCheck.data.session) {
+                            await client.auth.signOut();
+                        }
+                    }
+                    sessionStorage.setItem('dm_session_active', 'true');
                     setSupabaseClient(client);
 
                     // Add timeout for slow connections
@@ -237,6 +247,20 @@
                     });
 
                     client.auth.onAuthStateChange((_event, session) => {
+                        if (_event === 'PASSWORD_RECOVERY') {
+                            // User clicked password reset link - prompt for new password
+                            const newPassword = prompt('Enter your new password (min 6 characters):');
+                            if (newPassword && newPassword.length >= 6) {
+                                client.auth.updateUser({ password: newPassword }).then(({ error }) => {
+                                    if (error) {
+                                        alert('Error updating password: ' + error.message);
+                                    } else {
+                                        alert('Password updated successfully! You can now sign in.');
+                                        client.auth.signOut();
+                                    }
+                                });
+                            }
+                        }
                         setUser(session?.user ?? null);
                     });
                 } catch (e) {

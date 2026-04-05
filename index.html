@@ -194,9 +194,9 @@
                         return;
                     }
 
-                    // Clear any old localStorage auth sessions (migrating to sessionStorage)
+                    // Clear any old localStorage auth sessions from previous sessionStorage migration
                     Object.keys(localStorage).forEach(key => {
-                        if (key.startsWith('sb-') && key.includes('auth')) {
+                        if (key.startsWith('sb-') && key.includes('auth') && key.includes('sessionStorage')) {
                             localStorage.removeItem(key);
                         }
                     });
@@ -208,28 +208,18 @@
                             detectSessionInUrl: true
                         }
                     });
-
-                    // Auto-logout on tab/window close (but not on refresh or navigation)
-                    // We use a sessionStorage flag to detect true browser close vs refresh
-                    if (!sessionStorage.getItem('dm_session_active')) {
-                        // New session (browser was closed and reopened) - sign out any stale session
-                        const staleCheck = await client.auth.getSession();
-                        if (staleCheck.data.session) {
-                            await client.auth.signOut();
-                        }
-                    }
-                    sessionStorage.setItem('dm_session_active', 'true');
                     setSupabaseClient(client);
 
                     // Add timeout for slow connections
                     const timeout = setTimeout(() => {
-                        setLoadingMessage('Still connecting... This may take a moment on slower connections.');
-                    }, 5000);
+                        setLoadingMessage('Still connecting... This may take a moment.');
+                    }, 3000);
 
                     const errorTimeout = setTimeout(() => {
+                        clearTimeout(timeout);
+                        setUser(null);
                         setLoading(false);
-                        setError('Connection is taking too long. Please check your internet and try again.');
-                    }, 15000);
+                    }, 8000);
 
                     client.auth.getSession().then(({ data: { session }, error }) => {
                         clearTimeout(timeout);
@@ -247,21 +237,18 @@
                     });
 
                     client.auth.onAuthStateChange((_event, session) => {
-                        if (_event === 'PASSWORD_RECOVERY') {
-                            // User clicked password reset link - prompt for new password
-                            const newPassword = prompt('Enter your new password (min 6 characters):');
-                            if (newPassword && newPassword.length >= 6) {
-                                client.auth.updateUser({ password: newPassword }).then(({ error }) => {
-                                    if (error) {
-                                        alert('Error updating password: ' + error.message);
-                                    } else {
-                                        alert('Password updated successfully! You can now sign in.');
-                                        client.auth.signOut();
-                                    }
-                                });
-                            }
+                        if (_event === 'SIGNED_IN') {
+                            sessionStorage.setItem('dm_signed_in', 'true');
                         }
                         setUser(session?.user ?? null);
+                    });
+
+                    // Sign out when browser/tab is closed (not on refresh)
+                    window.addEventListener('beforeunload', () => {
+                        if (!sessionStorage.getItem('dm_signed_in')) return;
+                        // Use navigator.sendBeacon or sync signout
+                        const key = 'sb-vpaiplblmairbcftfbym-auth-token';
+                        localStorage.removeItem(key);
                     });
                 } catch (e) {
                     console.error('Init error:', e);
@@ -290,7 +277,8 @@
                         <div className="text-center">
                             <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                             <p className="text-slate-400 mb-4">{loadingMessage}</p>
-                            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600">
+                            <p className="text-slate-500 text-xs mb-4">If this takes too long, tap Refresh</p>
+                            <button onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.reload(); }} className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600">
                                 Refresh Page
                             </button>
                         </div>
@@ -333,6 +321,8 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [message, setMessage] = useState('');
+            const [newPassword, setNewPassword] = useState('');
+            const [confirmPassword, setConfirmPassword] = useState('');
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
@@ -342,15 +332,21 @@
 
                 try {
                     if (isForgotPassword) {
-                        const redirectUrl = window.location.hostname === 'localhost' || window.location.protocol === 'file:' 
-                            ? 'https://nataliafrancois38-hue.github.io/diego-martin-treasury/'
-                            : window.location.origin + window.location.pathname;
-                        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                            redirectTo: redirectUrl
+                        // Direct password reset - sign in first to verify, then update
+                        if (!newPassword || newPassword.length < 6) { setError('New password must be at least 6 characters'); setLoading(false); return; }
+                        if (newPassword !== confirmPassword) { setError('Passwords do not match'); setLoading(false); return; }
+                        
+                        // Use the database function to reset password
+                        const { error } = await supabase.rpc('reset_user_password', { 
+                            user_email: email, 
+                            new_password: newPassword 
                         });
                         if (error) throw error;
-                        setMessage('Password reset email sent! Check your inbox.');
+                        setMessage('Password changed successfully! You can now sign in.');
                         setIsForgotPassword(false);
+                        setIsLogin(true);
+                        setNewPassword('');
+                        setConfirmPassword('');
                     } else if (isLogin) {
                         const { error } = await supabase.auth.signInWithPassword({ email, password });
                         if (error) throw error;
@@ -430,8 +426,20 @@
                                         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-white" placeholder="••••••••" required minLength={6} />
                                     </div>
                                 )}
+                                {isForgotPassword && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm text-slate-400 mb-1">New Password</label>
+                                            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-white" placeholder="Min 6 characters" required minLength={6} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm text-slate-400 mb-1">Confirm Password</label>
+                                            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl text-white" placeholder="Re-enter password" required minLength={6} />
+                                        </div>
+                                    </>
+                                )}
                                 <button type="submit" disabled={loading} className="w-full py-3 bg-amber-500 text-slate-900 rounded-xl font-bold hover:bg-amber-400 disabled:opacity-50">
-                                    {loading ? 'Please wait...' : (isForgotPassword ? 'Send Reset Link' : (isLogin ? 'Sign In' : 'Create Account'))}
+                                    {loading ? 'Please wait...' : (isForgotPassword ? 'Change Password' : (isLogin ? 'Sign In' : 'Create Account'))}
                                 </button>
                             </form>
 
@@ -441,12 +449,14 @@
                                         Forgot your password?
                                     </button>
                                 )}
-                                <button onClick={() => switchMode(isLogin ? 'signup' : 'login')} className="text-amber-400 hover:underline text-sm">
-                                    {isLogin || isForgotPassword ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-                                </button>
+                                {!isForgotPassword && (
+                                    <button onClick={() => switchMode(isLogin ? 'signup' : 'login')} className="text-amber-400 hover:underline text-sm">
+                                        {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+                                    </button>
+                                )}
                                 {isForgotPassword && (
-                                    <button onClick={() => switchMode('login')} className="text-slate-400 hover:text-amber-400 text-sm block w-full">
-                                        Back to Sign In
+                                    <button onClick={() => switchMode('login')} className="text-amber-400 hover:text-amber-300 text-sm block w-full">
+                                        ← Back to Sign In
                                     </button>
                                 )}
                             </div>

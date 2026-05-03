@@ -113,9 +113,9 @@
 
         const DEFAULT_EXPENSE_CATEGORIES = [
             'Administration', 'Adventurer Club', 'Anniversary', 'AY',
-            'Board Expenses', 'Children\'s Ministry', 'Church Building', 'Church Building Aircondition',
+            'Board Expenses', 'Camp', 'Children\'s Ministry', 'Choir', 'Church Building', 'Church Building Aircondition',
             'Community Services', 'Crusade', 'Deaconry', 'Education', 'Elders',
-            'Electricity - T&TEC', 'Family Life', 'Gifts', 'Health', 'Hospitality',
+            'Electricity - T&TEC', 'Family Life', 'Funeral Fund', 'Gifts', 'Health', 'Hospitality',
             'Insurance', 'Internet - FLOW', 'Janitorial', 'Music/Communication',
             'Other', 'Pathfinders', 'Personal Ministries', 'POS Band', 'Religious Liberty',
             'Sabbath School', 'Sabbath School - Quarterlies', 'School - Wesport',
@@ -873,6 +873,7 @@
                 { key: 'expenses', label: 'Expenses' },
                 { key: 'projects', label: 'Projects' },
                 { key: 'budget', label: 'Budget' },
+                { key: 'bank-rec', label: 'Bank Rec' },
                 { key: 'forecasting', label: 'Forecasting' },
                 { key: 'reports', label: 'Reports' },
                 { key: 'statement', label: 'Statement' },
@@ -1314,6 +1315,14 @@
                                 expenses={expenses}
                                 deposits={deposits}
                                 settings={settings}
+                            />
+                        )}
+
+                        {/* Bank Reconciliation */}
+                        {view === 'bank-rec' && (
+                            <BankReconciliationSection 
+                                expenses={expenses}
+                                deposits={deposits}
                             />
                         )}
 
@@ -5179,132 +5188,244 @@
             );
         }
 
-        // Bank Reconciliation Section Component
+        // Bank Reconciliation Section Component - Automatic
         function BankReconciliationSection({ expenses, deposits }) {
-            const [reconciliationDate, setReconciliationDate] = useState(new Date().toISOString().split('T')[0]);
+            const [selectedMonth, setSelectedMonth] = useState(() => {
+                const d = new Date();
+                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            });
             const [bankStatementBalance, setBankStatementBalance] = useState('');
-            const [depositsInTransit, setDepositsInTransit] = useState('');
-            const [outstandingChecks, setOutstandingChecks] = useState('');
-            const [bookBalance, setBookBalance] = useState('');
             const [bankCharges, setBankCharges] = useState('');
             const [interestEarned, setInterestEarned] = useState('');
             const [otherAdjustments, setOtherAdjustments] = useState('');
+            const [prevBookBalance, setPrevBookBalance] = useState('');
 
-            // Bank Balance calculations
-            const bankStmtBal = parseFloat(bankStatementBalance) || 0;
-            const depInTransit = parseFloat(depositsInTransit) || 0;
-            const outChecks = parseFloat(outstandingChecks) || 0;
-            const adjustedBankBalance = bankStmtBal + depInTransit - outChecks;
-            
-            // Book Balance calculations
-            const bookBal = parseFloat(bookBalance) || 0;
+            // Parse selected month
+            const year = parseInt(selectedMonth.split('-')[0]);
+            const month = parseInt(selectedMonth.split('-')[1]);
+            const monthStart = `${selectedMonth}-01`;
+            const lastDay = new Date(year, month, 0).getDate();
+            const monthEnd = `${selectedMonth}-${String(lastDay).padStart(2,'0')}`;
+            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            const monthLabel = monthNames[month-1] + ' ' + year;
+
+            // Auto-calculate from existing data
+            // Deposits for this month
+            const monthDeposits = deposits.filter(d => d.date >= monthStart && d.date <= monthEnd);
+            const totalDeposits = monthDeposits.reduce((s,d) => s + (Number(d.amount)||0), 0);
+
+            // All cheque expenses
+            const monthCheques = expenses.filter(e => e.cheque_number && e.date >= monthStart && e.date <= monthEnd);
+            const totalCheques = monthCheques.reduce((s,e) => s + (Number(e.amount)||0), 0);
+
+            // Outstanding (uncashed) cheques - ALL uncashed cheques up to end of month
+            const uncashedCheques = expenses.filter(e => e.cheque_number && e.cheque_status !== 'Cashed' && e.date <= monthEnd);
+            const totalUncashed = uncashedCheques.reduce((s,e) => s + (Number(e.amount)||0), 0);
+
+            // Deposits in transit - deposits in the month that might not have cleared
+            // We consider all deposits from the last 3 days of the month as potentially in transit
+            const transitDate = new Date(year, month-1, lastDay-2).toISOString().split('T')[0];
+            const depositsInTransit = monthDeposits.filter(d => d.date >= transitDate);
+            const totalDepositsInTransit = depositsInTransit.reduce((s,d) => s + (Number(d.amount)||0), 0);
+
+            // Cash expenses this month (no cheque number)
+            const cashExpenses = expenses.filter(e => !e.cheque_number && e.date >= monthStart && e.date <= monthEnd);
+            const totalCashExpenses = cashExpenses.reduce((s,e) => s + (Number(e.amount)||0), 0);
+
+            // All expenses this month
+            const allMonthExpenses = expenses.filter(e => e.date >= monthStart && e.date <= monthEnd);
+            const totalMonthExpenses = allMonthExpenses.reduce((s,e) => s + (Number(e.amount)||0), 0);
+
+            // Book balance calculation
+            const prevBal = parseFloat(prevBookBalance) || 0;
             const bankChg = parseFloat(bankCharges) || 0;
             const intEarned = parseFloat(interestEarned) || 0;
             const otherAdj = parseFloat(otherAdjustments) || 0;
-            const adjustedBookBalance = bookBal - bankChg + intEarned + otherAdj;
-            
-            const difference = adjustedBankBalance - adjustedBookBalance;
+            const bookBalance = prevBal + totalDeposits - totalMonthExpenses - bankChg + intEarned + otherAdj;
+
+            // Bank side
+            const bankStmtBal = parseFloat(bankStatementBalance) || 0;
+            const adjustedBankBalance = bankStmtBal + totalDepositsInTransit - totalUncashed;
+
+            const difference = adjustedBankBalance - bookBalance;
+
+            const inputCls = "w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right text-sm";
 
             const exportBankReconciliation = () => {
                 try {
                     const data = [
-                        ['BANK RECONCILIATION'],
-                        [`As at: ${reconciliationDate}`],
+                        ['BANK RECONCILIATION STATEMENT'],
+                        ['Diego Martin SDA Church'],
+                        [`For the Month of ${monthLabel}`],
                         [],
-                        ['BANK BALANCES', '', '', 'BOOK BALANCE', ''],
+                        ['BOOK BALANCE', '', '', 'BANK BALANCE'],
                         [],
-                        ['Bank Statement Balance', bankStmtBal, '', 'Book Balance', bookBal],
-                        ['', '', '', 'Less: Bank Charges', -bankChg],
-                        ['', '', '', 'Add: Interest Earned', intEarned],
-                        ['', '', '', 'Other Adjustments', otherAdj],
+                        ['Balance from Previous Month', prevBal, '', 'Bank Statement Balance', bankStmtBal],
+                        ['Add: Total Deposits', totalDeposits, '', '', ''],
+                        ['Less: Total Expenses', -totalMonthExpenses, '', 'Add: Deposits in Transit', ''],
+                        ['Less: Bank Charges', -bankChg],
+                        ['Add: Interest Earned', intEarned],
+                        ['Other Adjustments', otherAdj],
                         [],
-                        ['Add: Deposits in Transit', depInTransit],
-                        ['Less: Outstanding Checks', -outChecks],
-                        [],
-                        ['Adjusted Bank Balance', adjustedBankBalance, '', 'Adjusted Book Balance', adjustedBookBalance],
-                        [],
-                        ['DIFFERENCE', difference],
-                        [],
-                        [Math.abs(difference) < 0.01 ? 'STATUS: RECONCILED' : 'STATUS: NOT RECONCILED']
                     ];
-                    
+                    // Add deposits in transit detail
+                    depositsInTransit.forEach(d => {
+                        data.push(['', '', '', `  ${d.date} - ${d.description || 'Deposit'}`, Number(d.amount)||0]);
+                    });
+                    data.push(['', '', '', 'Total Deposits in Transit', totalDepositsInTransit]);
+                    data.push([]);
+                    data.push(['', '', '', 'Less: Outstanding Cheques', '']);
+                    // Add uncashed cheques detail
+                    uncashedCheques.forEach(e => {
+                        const payee = e.description?.includes(' - ') ? e.description.split(' - ')[0].trim() : (e.description || '');
+                        data.push(['', '', '', `  Chq#${e.cheque_number} - ${payee} (${e.date})`, -(Number(e.amount)||0)]);
+                    });
+                    data.push(['', '', '', 'Total Outstanding Cheques', -totalUncashed]);
+                    data.push([]);
+                    data.push(['ADJUSTED BOOK BALANCE', bookBalance, '', 'ADJUSTED BANK BALANCE', adjustedBankBalance]);
+                    data.push([]);
+                    data.push(['DIFFERENCE', difference]);
+                    data.push([Math.abs(difference) < 0.01 ? 'STATUS: RECONCILED ✓' : 'STATUS: NOT RECONCILED ✗']);
+
                     const ws = XLSX.utils.aoa_to_sheet(data);
-                    ws['!cols'] = [{wch: 28}, {wch: 15}, {wch: 5}, {wch: 25}, {wch: 15}];
+                    ws['!cols'] = [{wch: 30}, {wch: 16}, {wch: 5}, {wch: 40}, {wch: 16}];
+                    const numFmt = '_("$"* #,##0.00_)';
+                    const rng = XLSX.utils.decode_range(ws['!ref']);
+                    for (let R = 0; R <= rng.e.r; R++) {
+                        for (const C of [1, 4]) {
+                            const addr = XLSX.utils.encode_cell({r:R, c:C});
+                            if (ws[addr] && typeof ws[addr].v === 'number') ws[addr].z = numFmt;
+                        }
+                    }
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, 'Bank Reconciliation');
-                    XLSX.writeFile(wb, `Bank_Reconciliation_${reconciliationDate}.xlsx`);
+                    XLSX.writeFile(wb, `Bank_Reconciliation_${selectedMonth}.xlsx`);
                 } catch (err) {
-                    console.error('Export error:', err);
                     alert('Export error: ' + err.message);
                 }
             };
 
             return (
                 <div className="space-y-4">
-                    {/* Header with Date and Export */}
+                    {/* Header */}
                     <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
                         <div className="flex flex-wrap gap-4 items-end justify-between">
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">Reconciliation Date</label>
-                                <input type="date" value={reconciliationDate} onChange={e => setReconciliationDate(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                                <label className="text-xs text-slate-400 block mb-1">Select Month</label>
+                                <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                            </div>
+                            <div className="text-center">
+                                <h3 className="text-lg font-bold text-white">Bank Reconciliation</h3>
+                                <p className="text-amber-400 text-sm">{monthLabel}</p>
                             </div>
                             <button onClick={exportBankReconciliation} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-500">📥 Export to Excel</button>
                         </div>
                     </div>
 
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                            <p className="text-xs text-emerald-400">Total Deposits</p>
+                            <p className="text-lg font-bold text-emerald-400">{fmtCur(totalDeposits)}</p>
+                            <p className="text-xs text-slate-500">{monthDeposits.length} deposits</p>
+                        </div>
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
+                            <p className="text-xs text-red-400">Total Expenses</p>
+                            <p className="text-lg font-bold text-red-400">{fmtCur(totalMonthExpenses)}</p>
+                            <p className="text-xs text-slate-500">{allMonthExpenses.length} items</p>
+                        </div>
+                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+                            <p className="text-xs text-amber-400">Outstanding Cheques</p>
+                            <p className="text-lg font-bold text-amber-400">{fmtCur(totalUncashed)}</p>
+                            <p className="text-xs text-slate-500">{uncashedCheques.length} cheques</p>
+                        </div>
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
+                            <p className="text-xs text-blue-400">Deposits in Transit</p>
+                            <p className="text-lg font-bold text-blue-400">{fmtCur(totalDepositsInTransit)}</p>
+                            <p className="text-xs text-slate-500">{depositsInTransit.length} deposits</p>
+                        </div>
+                    </div>
+
                     {/* Two Column Layout */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {/* Bank Balance Side */}
-                        <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
-                            <h3 className="text-lg font-semibold text-amber-400 mb-4 text-center border-b border-slate-700 pb-2">BANK BALANCES</h3>
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Bank Statement Balance</label>
-                                    <input type="number" step="0.01" value={bankStatementBalance} onChange={e => setBankStatementBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
-                                </div>
-                                <div className="border-t border-slate-700 pt-3">
-                                    <div>
-                                        <label className="text-xs text-slate-400 block mb-1">Add: Deposits in Transit</label>
-                                        <input type="number" step="0.01" value={depositsInTransit} onChange={e => setDepositsInTransit(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Less: Outstanding Checks</label>
-                                    <input type="number" step="0.01" value={outstandingChecks} onChange={e => setOutstandingChecks(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
-                                </div>
-                                <div className="pt-3 border-t border-slate-700">
-                                    <div className="flex justify-between items-center p-3 bg-amber-500/20 rounded-lg">
-                                        <span className="text-amber-400 font-semibold">Adjusted Bank Balance</span>
-                                        <span className="text-xl font-bold text-amber-400">{fmtCur(adjustedBankBalance)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         {/* Book Balance Side */}
                         <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
                             <h3 className="text-lg font-semibold text-blue-400 mb-4 text-center border-b border-slate-700 pb-2">BOOK BALANCE</h3>
                             <div className="space-y-3">
                                 <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Book Balance</label>
-                                    <input type="number" step="0.01" value={bookBalance} onChange={e => setBookBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
+                                    <label className="text-xs text-slate-400 block mb-1">Balance from Previous Month</label>
+                                    <input type="number" step="0.01" value={prevBookBalance} onChange={e => setPrevBookBalance(e.target.value)} placeholder="Enter previous month's closing balance" className={inputCls} />
+                                </div>
+                                <div className="flex justify-between items-center py-2 border-t border-slate-700">
+                                    <span className="text-sm text-emerald-400">Add: Total Deposits (auto)</span>
+                                    <span className="text-emerald-400 font-semibold">{fmtCur(totalDeposits)}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-2">
+                                    <span className="text-sm text-red-400">Less: Total Expenses (auto)</span>
+                                    <span className="text-red-400 font-semibold">({fmtCur(totalMonthExpenses)})</span>
                                 </div>
                                 <div>
                                     <label className="text-xs text-slate-400 block mb-1">Less: Bank Charges</label>
-                                    <input type="number" step="0.01" value={bankCharges} onChange={e => setBankCharges(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
+                                    <input type="number" step="0.01" value={bankCharges} onChange={e => setBankCharges(e.target.value)} placeholder="0.00" className={inputCls} />
                                 </div>
                                 <div>
                                     <label className="text-xs text-slate-400 block mb-1">Add: Interest Earned</label>
-                                    <input type="number" step="0.01" value={interestEarned} onChange={e => setInterestEarned(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
+                                    <input type="number" step="0.01" value={interestEarned} onChange={e => setInterestEarned(e.target.value)} placeholder="0.00" className={inputCls} />
                                 </div>
                                 <div>
                                     <label className="text-xs text-slate-400 block mb-1">Other Adjustments (+/-)</label>
-                                    <input type="number" step="0.01" value={otherAdjustments} onChange={e => setOtherAdjustments(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right" />
+                                    <input type="number" step="0.01" value={otherAdjustments} onChange={e => setOtherAdjustments(e.target.value)} placeholder="0.00" className={inputCls} />
                                 </div>
-                                <div className="pt-3 border-t border-slate-700">
+                                <div className="pt-3 border-t-2 border-blue-500">
                                     <div className="flex justify-between items-center p-3 bg-blue-500/20 rounded-lg">
                                         <span className="text-blue-400 font-semibold">Adjusted Book Balance</span>
-                                        <span className="text-xl font-bold text-blue-400">{fmtCur(adjustedBookBalance)}</span>
+                                        <span className="text-xl font-bold text-blue-400">{fmtCur(bookBalance)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bank Balance Side */}
+                        <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                            <h3 className="text-lg font-semibold text-amber-400 mb-4 text-center border-b border-slate-700 pb-2">BANK BALANCE</h3>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-xs text-slate-400 block mb-1">Bank Statement Balance</label>
+                                    <input type="number" step="0.01" value={bankStatementBalance} onChange={e => setBankStatementBalance(e.target.value)} placeholder="Enter balance from bank statement" className={inputCls} />
+                                </div>
+                                <div className="border-t border-slate-700 pt-3">
+                                    <p className="text-xs text-blue-400 font-semibold mb-2">Add: Deposits in Transit</p>
+                                    {depositsInTransit.length > 0 ? depositsInTransit.map(d => (
+                                        <div key={d.id} className="flex justify-between items-center py-1 px-2 text-sm">
+                                            <span className="text-slate-400">{d.date} - {d.description || 'Deposit'}</span>
+                                            <span className="text-blue-400">{fmtCur(d.amount)}</span>
+                                        </div>
+                                    )) : <p className="text-slate-500 text-xs px-2">None</p>}
+                                    <div className="flex justify-between items-center py-1 px-2 text-sm font-semibold border-t border-slate-700 mt-1">
+                                        <span className="text-blue-400">Total</span>
+                                        <span className="text-blue-400">{fmtCur(totalDepositsInTransit)}</span>
+                                    </div>
+                                </div>
+                                <div className="border-t border-slate-700 pt-3">
+                                    <p className="text-xs text-amber-400 font-semibold mb-2">Less: Outstanding Cheques (Uncashed)</p>
+                                    {uncashedCheques.length > 0 ? uncashedCheques.map(e => {
+                                        const payee = e.description?.includes(' - ') ? e.description.split(' - ')[0].trim() : (e.description || '');
+                                        return (
+                                            <div key={e.id} className="flex justify-between items-center py-1 px-2 text-sm">
+                                                <span className="text-slate-400">Chq#{e.cheque_number} - {payee}</span>
+                                                <span className="text-amber-400">({fmtCur(e.amount)})</span>
+                                            </div>
+                                        );
+                                    }) : <p className="text-slate-500 text-xs px-2">None</p>}
+                                    <div className="flex justify-between items-center py-1 px-2 text-sm font-semibold border-t border-slate-700 mt-1">
+                                        <span className="text-amber-400">Total</span>
+                                        <span className="text-amber-400">({fmtCur(totalUncashed)})</span>
+                                    </div>
+                                </div>
+                                <div className="pt-3 border-t-2 border-amber-500">
+                                    <div className="flex justify-between items-center p-3 bg-amber-500/20 rounded-lg">
+                                        <span className="text-amber-400 font-semibold">Adjusted Bank Balance</span>
+                                        <span className="text-xl font-bold text-amber-400">{fmtCur(adjustedBankBalance)}</span>
                                     </div>
                                 </div>
                             </div>
@@ -5319,6 +5440,9 @@
                             </span>
                             <span className={`text-2xl font-bold ${Math.abs(difference) < 0.01 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtCur(difference)}</span>
                         </div>
+                        {Math.abs(difference) >= 0.01 && (
+                            <p className="text-slate-400 text-xs mt-2">Check that all deposits and expenses are entered, and cheque statuses (Cashed/Uncashed) are up to date.</p>
+                        )}
                     </div>
                 </div>
             );

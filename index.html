@@ -2061,7 +2061,7 @@
                             {expenseType === 'department' && (
                                 <div className="mt-3">
                                     <label className="text-xs text-slate-400 uppercase tracking-wider">Department</label>
-                                    <select value={form.department} onChange={e => { handleChange('department', e.target.value); if (!form.category) handleChange('category', e.target.value); }} className={inputCls}>
+                                    <select value={form.department} onChange={e => { handleChange('department', e.target.value); handleChange('category', e.target.value); }} className={inputCls}>
                                         <option value="">Select Department</option>
                                         {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
@@ -2229,7 +2229,7 @@
                         <div className="grid grid-cols-3 gap-3">
                             <div>
                                 <label className="text-xs text-slate-400">Department</label>
-                                <select value={form.department} onChange={e => handleChange('department', e.target.value)} className={inputCls}>
+                                <select value={form.department} onChange={e => { handleChange('department', e.target.value); handleChange('category', e.target.value); }} className={inputCls}>
                                     <option value="">Select Department</option>
                                     {EXPENSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                                 </select>

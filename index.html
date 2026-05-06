@@ -3219,7 +3219,7 @@
             // Calculate spent per category
             const getSpentByCategory = (category) => {
                 return filteredExpenses
-                    .filter(e => e.category === category || e.description === category)
+                    .filter(e => e.category === category || e.department === category || e.description === category)
                     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
             };
 

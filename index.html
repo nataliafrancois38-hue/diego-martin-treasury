@@ -2290,9 +2290,10 @@
                 const mEntries = titheEntries.filter(e => e.date >= mStart && e.date <= mEnd);
                 const mExpenses = expenses.filter(e => e.date >= mStart && e.date <= mEnd);
                 
-                // Match Statement formula: prev + deposits - confPayment - expenses
+                // Deposits total (same as Statement: sum of total_received)
                 const mDepositTotal = mEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
-                const mTotals = calculateTitheTotals(mEntries);
+                // Conference payment (same as Statement: grandTotalConference with monthCount=1)
+                const mTotals = calculateTitheTotals(mEntries, mExpenses, 1);
                 const mConfPayment = mTotals.grandTotalConference || 0;
                 const mExpTotal = mExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 

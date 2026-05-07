@@ -2290,11 +2290,13 @@
                 const mEntries = titheEntries.filter(e => e.date >= mStart && e.date <= mEnd);
                 const mExpenses = expenses.filter(e => e.date >= mStart && e.date <= mEnd);
                 
-                // Calculate church operating for this month
+                // Match Statement formula: prev + deposits - confPayment - expenses
+                const mDepositTotal = mEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
                 const mTotals = calculateTitheTotals(mEntries);
+                const mConfPayment = mTotals.grandTotalConference || 0;
                 const mExpTotal = mExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 
-                return openingBal + (mTotals.churchOperating || 0) - mExpTotal;
+                return openingBal + mDepositTotal - mConfPayment - mExpTotal;
             };
             
             let prevBalance;
@@ -2346,8 +2348,7 @@
             const endBalance = parseFloat(prevBalance) + depositTotal - confFundPayment - thisMonthExpenseTotal;
             const increaseDecrease = thisMonthTotals.churchOperating - thisMonthExpenseTotal;
 
-            // Parse month properly to avoid timezone issues
-            const [selectedYear, selectedMonth] = month.split('-').map(Number);
+            // Parse month properly to avoid timezone issues (selectedYear and selectedMonth already declared above)
             const monthName = new Date(selectedYear, selectedMonth - 1, 15).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
             const lastDayOfMonth = new Date(selectedYear, selectedMonth, 0).getDate();
             const monthEndDate = `${new Date(selectedYear, selectedMonth - 1, 15).toLocaleDateString('en-US', { month: 'long' })} ${lastDayOfMonth}${lastDayOfMonth === 1 ? 'st' : lastDayOfMonth === 2 ? 'nd' : lastDayOfMonth === 3 ? 'rd' : 'th'} ${selectedYear}`;

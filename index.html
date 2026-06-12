@@ -2075,7 +2075,7 @@
                                     <select value={form.project_id || ''} onChange={e => { 
                                         handleChange('project_id', e.target.value);
                                         const proj = activeProjects.find(p => p.id === e.target.value);
-                                        if (proj) { if (!form.category) handleChange('category', proj.name); }
+                                        if (proj) { handleChange('category', proj.name); handleChange('department', proj.name); }
                                     }} className={inputCls}>
                                         <option value="">Select Fund</option>
                                         {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -2430,7 +2430,7 @@
                 const pmChurchOperating = pmTotals.churchOperating || 0;
                 
                 // Get expense by department
-                const getExpenseByDept = (dept, expList) => expList.filter(e => e.department === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                const getExpenseByDept = (dept, expList) => expList.filter(e => (e.department || e.category) === dept).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 
                 // Distribution of Funds - project balances (up to end of selected month)
                 const allProjects = projects || [];
@@ -2847,7 +2847,10 @@
                     ciY+=ciRH+0.02;
                 });
                 // S5: Expenditure - full width, dynamic row height, split to 2 slides if >10
-                const eI=[];EXPENSE_CATEGORIES.forEach(d=>{if(!d)return;const a=monthExpenses.filter(e=>e.department===d).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);if(a>0)eI.push([d,a]);});eI.sort((a,b)=>b[1]-a[1]);
+                const eI=[];EXPENSE_CATEGORIES.forEach(d=>{if(!d)return;const a=monthExpenses.filter(e=>(e.department||e.category)===d).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);if(a>0)eI.push([d,a]);});
+                // Also catch fund expenses not in EXPENSE_CATEGORIES
+                monthExpenses.forEach(e=>{const d=e.department||e.category;if(d&&!EXPENSE_CATEGORIES.includes(d)){const existing=eI.find(x=>x[0]===d);if(existing){existing[1]+=parseFloat(e.amount)||0;}else{eI.push([d,parseFloat(e.amount)||0]);}}});
+                eI.sort((a,b)=>b[1]-a[1]);
                 const maxPerSlide=10;
                 const renderExpSlide=(items,title,showTotal)=>{
                     slide=pres.addSlide();slide.background={color:darkBg};addH(slide,title);

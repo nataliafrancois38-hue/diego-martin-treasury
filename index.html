@@ -6197,7 +6197,9 @@
             totals.wesportExpenses = wesportExpenses;
             
             // 40%/60% is calculated on Budget Covenant MINUS School contributions, Children's Home, AND Wesport expenses
-            const baseFor40_60 = (totals.budget_covenant || 0) - (totals.school || 0) - (totals.pos_band || 0) - wesportExpenses;
+            // Ensure baseFor40_60 doesn't go negative (can't have negative church operating)
+            const rawBaseFor40_60 = (totals.budget_covenant || 0) - (totals.school || 0) - (totals.pos_band || 0) - wesportExpenses;
+            const baseFor40_60 = Math.max(0, rawBaseFor40_60);
             totals.baseFor40_60 = baseFor40_60;
             totals.percentage40 = baseFor40_60 * 0.4;
             totals.churchOperating = baseFor40_60 * 0.6;

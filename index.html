@@ -7306,7 +7306,6 @@
 
         // Calculate totals helper - monthCount is how many months the entries span (for fixed monthly school contribution)
         function calculateTitheTotals(entries, expenses = [], monthCount = 0) {
-            const FIXED_SCHOOL_MONTHLY = 5000;
             const totals = { totalReceived: 0, totalConfFund: 0, totalChurchFund: 0 };
             [...CONFERENCE_FIELDS, ...CHURCH_FIELDS].forEach(f => totals[f.key] = 0);
             entries.forEach(e => {
@@ -7322,16 +7321,14 @@
                 .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
             totals.wesportExpenses = wesportExpenses;
             
-            // Fixed school contribution ($5000/month) added to school deduction
-            const fixedSchoolTotal = monthCount > 0 ? FIXED_SCHOOL_MONTHLY * monthCount : 0;
-            totals.fixedSchoolContribution = fixedSchoolTotal;
-            const totalSchoolDeduction = (totals.school || 0) + fixedSchoolTotal;
+            // School deduction = tithe school contribution only (wesport expenses shown separately)
+            totals.fixedSchoolContribution = wesportExpenses; // For display purposes
+            const totalSchoolDeduction = (totals.school || 0);
             
-            // 40%/60% is calculated on Budget Covenant MINUS School contributions (tithe + fixed) and Children's Home
-            // 40%/60% is calculated on Budget Covenant MINUS School contributions, Children's Home, AND Wesport expenses
+            // 40%/60% is calculated on Budget Covenant MINUS School tithe, Children's Home, AND Wesport expenses
             const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0) - wesportExpenses;
             totals.baseFor40_60 = Math.max(0, baseFor40_60);
-            totals.percentage40 = baseFor40_60 * 0.4;
+            totals.percentage40 = totals.baseFor40_60 * 0.4;
             totals.churchOperating = totals.totalChurchFund - totals.percentage40;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;
             return totals;

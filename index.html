@@ -2847,16 +2847,40 @@
                     ciY+=ciRH+0.02;
                 });
                 // S5: Expenditure - full width, dynamic row height, split to 2 slides if >10
-                const eI=[];EXPENSE_CATEGORIES.forEach(d=>{if(!d)return;const a=monthExpenses.filter(e=>e.department===d).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);if(a>0)eI.push([d,a]);});eI.sort((a,b)=>b[1]-a[1]);
-                const maxPerSlide=10;
+                // Get ALL expenses - both department AND fund/project expenses
+                const expDeptMap = {};
+                monthExpenses.forEach(e => {
+                    // Use department, or if it's a fund expense, use the project name or category
+                    let dept = e.department;
+                    if (!dept && e.project_id) {
+                        // Find project name for fund expenses
+                        const proj = (projects || []).find(p => p.id === e.project_id);
+                        dept = proj ? proj.name : (e.category || 'Fund Expense');
+                    }
+                    if (!dept) dept = e.category || 'Other';
+                    if (!expDeptMap[dept]) expDeptMap[dept] = 0;
+                    expDeptMap[dept] += parseFloat(e.amount) || 0;
+                });
+                const eI = Object.entries(expDeptMap).filter(([d, a]) => a > 0).sort((a, b) => b[1] - a[1]);
+                const maxPerSlide=15;
                 const renderExpSlide=(items,title,showTotal)=>{
                     slide=pres.addSlide();slide.background={color:darkBg};addH(slide,title);
-                    const rows=items.length+(showTotal?1:0);const rh=Math.min(0.36,4.2/rows);const st=1.1;
-                    items.forEach((item,i)=>{const y=st+(i*rh);slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:rh-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:0.7,y:y,w:5,h:rh-0.02,fontSize:15,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:y,w:3.3,h:rh-0.02,fontSize:15,color:white,align:'right',valign:'middle'});});
+                    const rows=items.length+(showTotal?1:0);const rh=Math.min(0.28,4.2/rows);const st=1.1;
+                    items.forEach((item,i)=>{const y=st+(i*rh);slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:rh-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:0.7,y:y,w:5,h:rh-0.02,fontSize:14,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:y,w:3.3,h:rh-0.02,fontSize:14,color:white,align:'right',valign:'middle'});});
                     if(showTotal){const ty=st+(items.length*rh)+0.06;slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:ty,w:9,h:rh+0.04,fill:{color:'1A2332'}});slide.addText('TOTAL EXPENSES',{x:0.7,y:ty,w:5,h:rh+0.04,fontSize:18,color:red,bold:true,valign:'middle'});slide.addText(fmtC(thisMonthExpenseTotal),{x:6,y:ty,w:3.3,h:rh+0.04,fontSize:18,color:red,bold:true,align:'right',valign:'middle'});}
                 };
-                if(eI.length<=maxPerSlide){renderExpSlide(eI,'EXPENDITURE',true);}
-                else{renderExpSlide(eI.slice(0,maxPerSlide),'EXPENDITURE (1/2)',false);renderExpSlide(eI.slice(maxPerSlide),'EXPENDITURE (2/2)',true);}
+                // Handle any number of expense categories - split into multiple slides if needed
+                const numSlides = Math.ceil(eI.length / maxPerSlide);
+                if(numSlides === 1) {
+                    renderExpSlide(eI,'EXPENDITURE',true);
+                } else {
+                    for(let s = 0; s < numSlides; s++) {
+                        const start = s * maxPerSlide;
+                        const end = Math.min(start + maxPerSlide, eI.length);
+                        const isLast = (s === numSlides - 1);
+                        renderExpSlide(eI.slice(start, end), `EXPENDITURE (${s+1}/${numSlides})`, isLast);
+                    }
+                }
                 // S6: Reconciliation
                 slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'RECONCILIATION: CHEQUING ACCOUNT');
                 slide.addShape(pres.shapes.RECTANGLE,{x:1.5,y:1.2,w:7,h:2.4,fill:{color:darkSlate},shadow:{type:'outer',blur:6,offset:3,angle:135,color:'000000',opacity:0.3}});
@@ -7304,8 +7328,9 @@
             const totalSchoolDeduction = (totals.school || 0) + fixedSchoolTotal;
             
             // 40%/60% is calculated on Budget Covenant MINUS School contributions (tithe + fixed) and Children's Home
-            const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0);
-            totals.baseFor40_60 = baseFor40_60;
+            // 40%/60% is calculated on Budget Covenant MINUS School contributions, Children's Home, AND Wesport expenses
+            const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0) - wesportExpenses;
+            totals.baseFor40_60 = Math.max(0, baseFor40_60);
             totals.percentage40 = baseFor40_60 * 0.4;
             totals.churchOperating = totals.totalChurchFund - totals.percentage40;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;

@@ -894,8 +894,13 @@
                 { key: 'submissions', label: 'Submissions' },
             ];
 
-            const titheTotals = calculateTitheTotals(titheEntries, expenses);
-            const expenseTotal = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            // Dashboard totals: only include entries/expenses dated up to today (exclude future-dated)
+            const _now = new Date();
+            const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
+            const dashTitheEntries = titheEntries.filter(e => String(e.date || '') <= todayStr);
+            const dashExpenses = expenses.filter(e => String(e.date || '') <= todayStr);
+            const titheTotals = calculateTitheTotals(dashTitheEntries, dashExpenses);
+            const expenseTotal = dashExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
             // Search function
             const getSearchResults = () => {
@@ -1084,7 +1089,7 @@
                                     <div className="bg-gradient-to-br from-amber-500/20 to-transparent rounded-xl border border-amber-500/30 p-3">
                                         <p className="text-xs text-slate-400">Total Received</p>
                                         <p className="text-lg font-bold text-white">{fmtCur(titheTotals.totalReceived)}</p>
-                                        <p className="text-xs text-slate-500">{titheEntries.length} entries</p>
+                                        <p className="text-xs text-slate-500">{dashTitheEntries.length} entries</p>
                                     </div>
                                     <div className="bg-gradient-to-br from-cyan-500/20 to-transparent rounded-xl border border-cyan-500/30 p-3">
                                         <p className="text-xs text-slate-400">Church Income</p>
@@ -1099,7 +1104,7 @@
                                     <div className="bg-gradient-to-br from-red-500/20 to-transparent rounded-xl border border-red-500/30 p-3">
                                         <p className="text-xs text-slate-400">Total Expenses</p>
                                         <p className="text-lg font-bold text-white">{fmtCur(expenseTotal)}</p>
-                                        <p className="text-xs text-slate-500">{expenses.length} payments</p>
+                                        <p className="text-xs text-slate-500">{dashExpenses.length} payments</p>
                                     </div>
                                     <div className="bg-gradient-to-br from-blue-500/20 to-transparent rounded-xl border border-blue-500/30 p-3">
                                         <p className="text-xs text-slate-400">Total Tithe Income</p>
@@ -1119,17 +1124,23 @@
                                     const monthlyTithe = Array(12).fill(0);
                                     
                                     titheEntries.forEach(e => {
-                                        const d = new Date(e.date);
-                                        if (d.getFullYear() === currentYear) {
-                                            monthlyIncome[d.getMonth()] += parseFloat(e.total_received) || 0;
-                                            monthlyTithe[d.getMonth()] += parseFloat(e.tithe) || 0;
+                                        if (String(e.date || '') > todayStr) return; // Skip future-dated
+                                        const parts = String(e.date || '').split('-');
+                                        const y = parseInt(parts[0], 10);
+                                        const m = parseInt(parts[1], 10);
+                                        if (y === currentYear && m >= 1 && m <= 12) {
+                                            monthlyIncome[m - 1] += parseFloat(e.total_received) || 0;
+                                            monthlyTithe[m - 1] += parseFloat(e.tithe) || 0;
                                         }
                                     });
                                     
                                     expenses.forEach(e => {
-                                        const d = new Date(e.date);
-                                        if (d.getFullYear() === currentYear) {
-                                            monthlyExpenses[d.getMonth()] += parseFloat(e.amount) || 0;
+                                        if (String(e.date || '') > todayStr) return; // Skip future-dated
+                                        const parts = String(e.date || '').split('-');
+                                        const y = parseInt(parts[0], 10);
+                                        const m = parseInt(parts[1], 10);
+                                        if (y === currentYear && m >= 1 && m <= 12) {
+                                            monthlyExpenses[m - 1] += parseFloat(e.amount) || 0;
                                         }
                                     });
                                     
@@ -3385,7 +3396,7 @@
 
             // Calculate forecast data
             const getYearExpenses = (year) => {
-                return expenses.filter(e => new Date(e.date).getFullYear() === year);
+                return expenses.filter(e => parseInt(String(e.date || '').split('-')[0], 10) === year);
             };
             
             const getSpentByYearCategory = (year, category) => {
@@ -4233,9 +4244,12 @@
             const getMonthlyData = (entries, year, field = 'total_received') => {
                 const data = Array(12).fill(0);
                 entries.forEach(e => {
-                    const d = new Date(e.date);
-                    if (d.getFullYear() === year) {
-                        data[d.getMonth()] += parseFloat(e[field]) || 0;
+                    // Parse date string directly to avoid timezone shifts (e.g. '2026-06-01' counting as May)
+                    const parts = String(e.date || '').split('-');
+                    const y = parseInt(parts[0], 10);
+                    const m = parseInt(parts[1], 10);
+                    if (y === year && m >= 1 && m <= 12) {
+                        data[m - 1] += parseFloat(e[field]) || 0;
                     }
                 });
                 return data;
@@ -4244,9 +4258,12 @@
             const getMonthlyExpenses = (year) => {
                 const data = Array(12).fill(0);
                 expenses.forEach(e => {
-                    const d = new Date(e.date);
-                    if (d.getFullYear() === year) {
-                        data[d.getMonth()] += parseFloat(e.amount) || 0;
+                    // Parse date string directly to avoid timezone shifts (e.g. '2026-06-01' counting as May)
+                    const parts = String(e.date || '').split('-');
+                    const y = parseInt(parts[0], 10);
+                    const m = parseInt(parts[1], 10);
+                    if (y === year && m >= 1 && m <= 12) {
+                        data[m - 1] += parseFloat(e.amount) || 0;
                     }
                 });
                 return data;
@@ -4255,9 +4272,12 @@
             const getMonthlyDeposits = (year) => {
                 const data = Array(12).fill(0);
                 titheEntries.forEach(e => {
-                    const dt = new Date(e.date);
-                    if (dt.getFullYear() === year) {
-                        data[dt.getMonth()] += parseFloat(e.total_received) || 0;
+                    // Parse date string directly to avoid timezone shifts
+                    const parts = String(e.date || '').split('-');
+                    const y = parseInt(parts[0], 10);
+                    const m = parseInt(parts[1], 10);
+                    if (y === year && m >= 1 && m <= 12) {
+                        data[m - 1] += parseFloat(e.total_received) || 0;
                     }
                 });
                 return data;
@@ -4882,7 +4902,7 @@
                         
                         // Monthly trends
                         const monthlyTrends = Array(12).fill(null).map((_, idx) => {
-                            const monthEntries = thisYearEntries.filter(e => new Date(e.date).getMonth() === idx);
+                            const monthEntries = thisYearEntries.filter(e => parseInt(String(e.date || '').split('-')[1], 10) - 1 === idx);
                             const tithe = monthEntries.reduce((s, e) => s + (parseFloat(e.tithe) || 0), 0);
                             const total = monthEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
                             const members = new Set(monthEntries.map(e => e.name)).size;
@@ -5053,7 +5073,7 @@
                                         
                                         // Monthly Budget Covenant trends
                                         const monthlyBC = Array(12).fill(null).map((_, idx) => {
-                                            const monthEntries = thisYearEntries.filter(e => new Date(e.date).getMonth() === idx);
+                                            const monthEntries = thisYearEntries.filter(e => parseInt(String(e.date || '').split('-')[1], 10) - 1 === idx);
                                             const bc = monthEntries.reduce((s, e) => s + (parseFloat(e.budget_covenant) || 0), 0);
                                             const members = new Set(monthEntries.filter(e => (parseFloat(e.budget_covenant) || 0) > 0).map(e => e.name)).size;
                                             return { month: months[idx], amount: bc, members };
@@ -5602,14 +5622,14 @@
                     const memberRows = selectedCovenantMembers.map((member, idx) => {
                         const memberEntries = titheEntries.filter(e => 
                             e.name === member && 
-                            new Date(e.date).getFullYear() === covenantYear
+                            parseInt(String(e.date || '').split('-')[0], 10) === covenantYear
                         );
                         
                         // Sum total_received by month
                         const monthlyTotals = Array(12).fill(0);
                         memberEntries.forEach(entry => {
-                            const month = new Date(entry.date).getMonth();
-                            monthlyTotals[month] += parseFloat(entry.total_received) || 0;
+                            const month = parseInt(String(entry.date || '').split('-')[1], 10) - 1;
+                            if (month >= 0 && month <= 11) monthlyTotals[month] += parseFloat(entry.total_received) || 0;
                         });
                         
                         const total = monthlyTotals.reduce((s, v) => s + v, 0);
@@ -7179,12 +7199,12 @@
                                                 {selectedCovenantMembers.map((member, idx) => {
                                                     const memberEntries = titheEntries.filter(e => 
                                                         e.name === member && 
-                                                        new Date(e.date).getFullYear() === covenantYear
+                                                        parseInt(String(e.date || '').split('-')[0], 10) === covenantYear
                                                     );
                                                     const monthlyTotals = Array(12).fill(0);
                                                     memberEntries.forEach(entry => {
-                                                        const month = new Date(entry.date).getMonth();
-                                                        monthlyTotals[month] += parseFloat(entry.total_received) || 0;
+                                                        const month = parseInt(String(entry.date || '').split('-')[1], 10) - 1;
+                                                        if (month >= 0 && month <= 11) monthlyTotals[month] += parseFloat(entry.total_received) || 0;
                                                     });
                                                     const total = monthlyTotals.reduce((s, v) => s + v, 0);
                                                     
@@ -7206,8 +7226,8 @@
                                                     const monthTotal = selectedCovenantMembers.reduce((sum, member) => {
                                                         const entries = titheEntries.filter(e => 
                                                             e.name === member && 
-                                                            new Date(e.date).getFullYear() === covenantYear &&
-                                                            new Date(e.date).getMonth() === monthIdx
+                                                            parseInt(String(e.date || '').split('-')[0], 10) === covenantYear &&
+                                                            parseInt(String(e.date || '').split('-')[1], 10) - 1 === monthIdx
                                                         );
                                                         return sum + entries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
                                                     }, 0);

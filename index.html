@@ -2331,7 +2331,8 @@
                 // Conference payment (same as Statement: grandTotalConference with monthCount=1)
                 const mTotals = calculateTitheTotals(mEntries, mExpenses, 1);
                 const mConfPayment = mTotals.grandTotalConference || 0;
-                const mExpTotal = mExpenses.filter(e => !isChurchProjectExpense(e)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                // All expenses (including Church Project) come out of the chequing account
+                const mExpTotal = mExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 
                 return openingBal + mDepositTotal - mConfPayment - mExpTotal;
             };
@@ -2386,8 +2387,9 @@
             const depositTotal = monthDeposits.reduce((s, d) => s + (parseFloat(d.total) || 0), 0);
 
             const confFundPayment = thisMonthTotals.grandTotalConference;
-            const endBalance = parseFloat(prevBalance) + depositTotal - confFundPayment - thisMonthExpenseTotal;
-            const increaseDecrease = thisMonthTotals.churchOperating - thisMonthExpenseTotal;
+            // Church Project cheques come out of the same chequing account, so they reduce the balance
+            const endBalance = parseFloat(prevBalance) + depositTotal - confFundPayment - thisMonthExpenseTotal - monthChurchProjectTotal;
+            const increaseDecrease = thisMonthTotals.churchOperating - thisMonthExpenseTotal - monthChurchProjectTotal;
 
             // Parse month properly to avoid timezone issues (selectedYear and selectedMonth already declared above)
             const monthName = new Date(selectedYear, selectedMonth - 1, 15).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -2505,7 +2507,7 @@
                 const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
                 const churchOperatingIncome = allTimeTotals.churchOperating || 0;
                 // Chequing balance = Reconciliation "Balance as at" = prevBalance + churchOperating - expenses
-                const chequingBalance = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal;
+                const chequingBalance = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal - monthChurchProjectTotal;
                 const representedByTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
                 const churchReserve = representedByTotal - totalProjectFunds - churchOperatingIncome;
                 
@@ -2708,10 +2710,10 @@
                 setCell(`A${reconPrev}`, 'Balance From Previous Month');
                 setCell(`B${reconPrev}`, parseFloat(prevBalance), acctFmt);
                 
-                // Balance as at (formula: =BprevBalance+B36-Btotalexp)
+                // Balance as at (formula includes church project deduction)
                 const reconBal = reconPrev + 1;
                 setCell(`A${reconBal}`, `Balance as at: ${monthEndDate}`);
-                setFormula(`B${reconBal}`, `B${reconPrev}+B36-B${totalExpRow}`, acctFmt);
+                setFormula(`B${reconBal}`, `B${reconPrev}+B36-B${totalExpRow}-B${cpRow}`, acctFmt);
                 
                 // Increase/Decrease (formula: =Bbal-Bprev)
                 const reconInc = reconBal + 1;
@@ -2812,8 +2814,8 @@
                 const ytdChurchOp=tmChurchOp+pmChurchOp;
                 const ytdTotalChurchIncome=tmTotalChurchIncome+pmTotalChurchIncome;
                 
-                const reconBalance=parseFloat(prevBalance)+tmChurchOp-thisMonthExpenseTotal;
-                const increaseDecrease=tmChurchOp-thisMonthExpenseTotal;
+                const reconBalance=parseFloat(prevBalance)+tmChurchOp-thisMonthExpenseTotal-monthChurchProjectTotal;
+                const increaseDecrease=tmChurchOp-thisMonthExpenseTotal-monthChurchProjectTotal;
                 const netPosition=increaseDecrease;
                 // Distribution data - filtered up to selected month
                 const allPrj=projects||[];
@@ -2835,11 +2837,11 @@
                 slide.addText(new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}),{x:0.8,y:4.6,w:8.4,h:0.5,fontSize:18,fontFace:'Calibri',color:slate});
                 // S2: Executive Summary
                 slide=pres.addSlide();slide.background={color:darkBg};addH(slide,'EXECUTIVE SUMMARY');
-                [{label:'Total Received',value:fmtC(tmTotals.totalReceived||0),color:ice},{label:'Church Operating',value:fmtC(tmChurchOp),color:green},{label:'Total Expenses',value:fmtC(thisMonthExpenseTotal),color:red},{label:'Chequing Balance',value:fmtC(reconBalance),color:gold}].forEach((m,i)=>{
-                    const x=0.3+(i*2.4);
-                    slide.addShape(pres.shapes.RECTANGLE,{x:x,y:1.2,w:2.2,h:1.6,fill:{color:darkSlate},shadow:{type:'outer',blur:4,offset:2,angle:135,color:'000000',opacity:0.3}});
-                    slide.addText(m.value,{x:x,y:1.3,w:2.2,h:0.9,fontSize:24,fontFace:'Calibri',color:m.color,bold:true,align:'center',valign:'middle'});
-                    slide.addText(m.label,{x:x,y:2.2,w:2.2,h:0.5,fontSize:16,fontFace:'Calibri',color:slate,align:'center'});
+                [{label:'Total Received',value:fmtC(tmTotals.totalReceived||0),color:ice},{label:'Church Operating',value:fmtC(tmChurchOp),color:green},{label:'Total Expenses',value:fmtC(thisMonthExpenseTotal),color:red},{label:'Church Project',value:fmtC(monthChurchProjectTotal),color:'A78BFA'},{label:'Chequing Balance',value:fmtC(reconBalance),color:gold}].forEach((m,i)=>{
+                    const x=0.25+(i*1.92);
+                    slide.addShape(pres.shapes.RECTANGLE,{x:x,y:1.2,w:1.82,h:1.6,fill:{color:darkSlate},shadow:{type:'outer',blur:4,offset:2,angle:135,color:'000000',opacity:0.3}});
+                    slide.addText(m.value,{x:x,y:1.3,w:1.82,h:0.9,fontSize:17,fontFace:'Calibri',color:m.color,bold:true,align:'center',valign:'middle'});
+                    slide.addText(m.label,{x:x,y:2.2,w:1.82,h:0.5,fontSize:12,fontFace:'Calibri',color:slate,align:'center'});
                 });
                 slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:3.15,w:9,h:0.9,fill:{color:darkSlate}});
                 slide.addText([{text:'Net Position:  ',options:{color:slate,fontSize:20}},{text:(netPosition>=0?'+':'')+fmtC(netPosition),options:{color:netPosition>=0?green:red,fontSize:28,bold:true}},{text:netPosition>=0?'  SURPLUS':'  DEFICIT',options:{color:netPosition>=0?green:red,fontSize:20,bold:true}}],{x:0.5,y:3.15,w:9,h:0.9,align:'center',valign:'middle'});
@@ -2895,9 +2897,9 @@
                     ciY+=ciRH+0.02;
                 });
                 // S5: Expenditure - full width, dynamic row height, split to 2 slides if >10
-                // Get ALL expenses - both department AND fund/project expenses
+                // Get ALL expenses except Church Project (tracked separately)
                 const expDeptMap = {};
-                monthExpenses.forEach(e => {
+                monthExpenses.filter(e => !isChurchProjectExpense(e)).forEach(e => {
                     // Use department, or if it's a fund expense, use the project name or category
                     let dept = e.department;
                     if (!dept && e.project_id) {
@@ -2913,9 +2915,19 @@
                 const maxPerSlide=15;
                 const renderExpSlide=(items,title,showTotal)=>{
                     slide=pres.addSlide();slide.background={color:darkBg};addH(slide,title);
-                    const rows=items.length+(showTotal?1:0);const rh=Math.min(0.28,4.2/rows);const st=1.1;
+                    const rows=items.length+(showTotal?2:0);const rh=Math.min(0.28,4.2/rows);const st=1.1;
                     items.forEach((item,i)=>{const y=st+(i*rh);slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:y,w:9,h:rh-0.02,fill:{color:darkSlate}});slide.addText(item[0],{x:0.7,y:y,w:5,h:rh-0.02,fontSize:14,color:white,valign:'middle'});slide.addText(fmtC(item[1]),{x:6,y:y,w:3.3,h:rh-0.02,fontSize:14,color:white,align:'right',valign:'middle'});});
-                    if(showTotal){const ty=st+(items.length*rh)+0.06;slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:ty,w:9,h:rh+0.04,fill:{color:'1A2332'}});slide.addText('TOTAL EXPENSES',{x:0.7,y:ty,w:5,h:rh+0.04,fontSize:18,color:red,bold:true,valign:'middle'});slide.addText(fmtC(thisMonthExpenseTotal),{x:6,y:ty,w:3.3,h:rh+0.04,fontSize:18,color:red,bold:true,align:'right',valign:'middle'});}
+                    if(showTotal){
+                        const ty=st+(items.length*rh)+0.06;
+                        slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:ty,w:9,h:rh+0.04,fill:{color:'1A2332'}});
+                        slide.addText('TOTAL EXPENSES',{x:0.7,y:ty,w:5,h:rh+0.04,fontSize:18,color:red,bold:true,valign:'middle'});
+                        slide.addText(fmtC(thisMonthExpenseTotal),{x:6,y:ty,w:3.3,h:rh+0.04,fontSize:18,color:red,bold:true,align:'right',valign:'middle'});
+                        // Church Project shown separately below the total
+                        const cy=ty+rh+0.1;
+                        slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:cy,w:9,h:rh+0.04,fill:{color:'2A1F3D'}});
+                        slide.addText('CHURCH PROJECT (SEPARATE)',{x:0.7,y:cy,w:5,h:rh+0.04,fontSize:16,color:'A78BFA',bold:true,valign:'middle'});
+                        slide.addText(fmtC(monthChurchProjectTotal),{x:6,y:cy,w:3.3,h:rh+0.04,fontSize:16,color:'A78BFA',bold:true,align:'right',valign:'middle'});
+                    }
                 };
                 // Handle any number of expense categories - split into multiple slides if needed
                 const numSlides = Math.ceil(eI.length / maxPerSlide);
@@ -2935,7 +2947,7 @@
                 slide.addText('Chequing Account Balance',{x:1.5,y:1.35,w:7,h:0.55,fontSize:20,color:slate,align:'center'});
                 slide.addText(fmtC(reconBalance),{x:1.5,y:1.9,w:7,h:1.1,fontSize:52,fontFace:'Georgia',color:gold,bold:true,align:'center'});
                 slide.addText('as at '+monthEndDate,{x:1.5,y:3.0,w:7,h:0.45,fontSize:18,color:slate,align:'center'});
-                [['Balance From Previous Month',fmtC(parseFloat(prevBalance)),ice],['Church Operating Income','+ '+fmtC(tmChurchOp),green],['Total Expenses','- '+fmtC(thisMonthExpenseTotal),red],['Increase/Decrease',(increaseDecrease>=0?'+':'-')+' '+fmtC(increaseDecrease),increaseDecrease>=0?green:red]].forEach((item,i)=>{
+                [['Balance From Previous Month',fmtC(parseFloat(prevBalance)),ice],['Church Operating Income','+ '+fmtC(tmChurchOp),green],['Total Expenses','- '+fmtC(thisMonthExpenseTotal),red],['Church Project (Separate)','- '+fmtC(monthChurchProjectTotal),red],['Increase/Decrease',(increaseDecrease>=0?'+':'-')+' '+fmtC(increaseDecrease),increaseDecrease>=0?green:red]].forEach((item,i)=>{
                     const y=3.9+(i*0.42),last=i===3;
                     slide.addShape(pres.shapes.RECTANGLE,{x:1.8,y:y,w:6.4,h:0.4,fill:{color:last?'1A2332':darkSlate}});
                     slide.addText(item[0],{x:2.0,y:y,w:3.5,h:0.4,fontSize:18,color:last?gold:white,bold:last,valign:'middle'});
@@ -3229,6 +3241,7 @@
                                     <div className="flex justify-between"><span className="text-slate-400">+ Total Deposits</span><span className="text-emerald-400">+{fmtCur(depositTotal)}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-400">- Conference Fund Payment</span><span className="text-red-400">-{fmtCur(confFundPayment)}</span></div>
                                     <div className="flex justify-between"><span className="text-slate-400">- Total Expenses</span><span className="text-red-400">-{fmtCur(thisMonthExpenseTotal)}</span></div>
+                                    <div className="flex justify-between"><span className="text-slate-400">- Church Project</span><span className="text-purple-400">-{fmtCur(monthChurchProjectTotal)}</span></div>
                                     <div className="flex justify-between bg-purple-500/20 p-2 rounded-lg font-bold border-t border-slate-700 mt-2"><span className="text-purple-400">Balance as at {monthName}</span><span className="text-purple-400">{fmtCur(endBalance)}</span></div>
                                 </div>
                             </div>
@@ -3264,7 +3277,7 @@
                         const stmtTotalAllocated = stmtTotalProjectFunds + stmtChurchOp;
                         const stmtUT = parseFloat(unitTrust) || 0;
                         const stmtRF = parseFloat(revolvingFund) || 0;
-                        const stmtCheq = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal;
+                        const stmtCheq = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal - monthChurchProjectTotal;
                         const stmtRepTotal = stmtUT + stmtCheq + stmtRF;
                         const stmtReserves = stmtRepTotal - stmtTotalAllocated;
                         

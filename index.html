@@ -107,6 +107,7 @@
             { key: 'messages_of_hope', label: 'Messages of Hope Radio' },
             { key: 'adventurer', label: 'Adventurer Club' },
             { key: 'pathfinder', label: 'Pathfinder Club' },
+            { key: 'ay', label: 'AY' },
             { key: 'funeral', label: 'Funeral Fund' },
             { key: 'camp', label: 'Camp' },
         ];
@@ -261,7 +262,9 @@
         function getProjectLinkedField(project) {
             if (project.linked_tithe_field) return project.linked_tithe_field;
             // Auto-detect from project name
-            const nameLower = (project.name || '').toLowerCase();
+            const nameLower = (project.name || '').toLowerCase().trim();
+            // Exact-name matches for short names ('ay' would falsely match via includes)
+            if (nameLower === 'ay' || nameLower === 'a.y.' || nameLower === 'ay fund' || nameLower === 'adventist youth') return 'ay';
             for (const [keyword, fieldKey] of Object.entries(DEFAULT_PROJECT_FIELD_MAP)) {
                 if (nameLower.includes(keyword)) return fieldKey;
             }
@@ -693,8 +696,8 @@
 
             const saveTitheEntry = async (entry) => {
                 try {
-                    // Convert empty strings to 0 for numeric fields
-                    const numericFields = ['tithe', 'special_offering', 'ingathering', 'radio', 'nehemiah', 'budget_covenant', 'sabbath_school', 'welfare', 'pos_band', 'school', 'project', 'books', 'raffa_house', 'tv', 'government_fund', 'messages_of_hope', 'adventurer', 'pathfinder', 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
+                    // Convert empty strings to 0 for numeric fields (built from field definitions so new funds are always included)
+                    const numericFields = [...ALL_FIELDS.map(f => f.key), 'total_received', 'total_conf_fund', 'total_church_fund', 'slip_number'];
                     const cleanedEntry = { ...entry };
                     numericFields.forEach(field => {
                         if (cleanedEntry[field] === '' || cleanedEntry[field] === null || cleanedEntry[field] === undefined) {
@@ -7454,7 +7457,7 @@
             const pendingCount = submissions.filter(s => s.status === 'pending').length;
             const filtered = submissions.filter(s => filter === 'all' || s.status === filter);
             const CONF_FIELDS = [{ key:'tithe',label:'Tithes'},{key:'special_offering',label:'Special Offering'},{key:'ingathering',label:'ADRA'},{key:'radio',label:'3ABN/Radio'},{key:'nehemiah',label:'Nehemiah'}];
-            const CHURCH_FIELDS = [{key:'budget_covenant',label:'Budget Covenant/Offerings'},{key:'welfare',label:'Welfare'},{key:'project',label:'Church Building Fund'},{key:'school',label:'Contributions to School'},{key:'pos_band',label:"Children's Home"},{key:'books',label:'Refunds'},{key:'raffa_house',label:'Choir'},{key:'tv',label:'Special Projects'},{key:'government_fund',label:'Church Project'},{key:'messages_of_hope',label:'Messages of Hope Radio'},{key:'funeral',label:'Funeral Fund'},{key:'camp',label:'Camp'}];
+            const CHURCH_FIELDS = [{key:'budget_covenant',label:'Budget Covenant/Offerings'},{key:'welfare',label:'Welfare'},{key:'project',label:'Church Building Fund'},{key:'school',label:'Contributions to School'},{key:'pos_band',label:"Children's Home"},{key:'books',label:'Refunds'},{key:'raffa_house',label:'Choir'},{key:'tv',label:'Special Projects'},{key:'government_fund',label:'Church Project'},{key:'messages_of_hope',label:'Messages of Hope Radio'},{key:'adventurer',label:'Adventurer Club'},{key:'pathfinder',label:'Pathfinder Club'},{key:'ay',label:'AY'},{key:'funeral',label:'Funeral Fund'},{key:'camp',label:'Camp'}];
             const allFields = [...CONF_FIELDS,...CHURCH_FIELDS];
             const fmtC = v => '$' + (parseFloat(v)||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             

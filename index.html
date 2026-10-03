@@ -1553,7 +1553,8 @@
             const toggleChequeStatus = async (expense) => {
                 const newStatus = expense.cheque_status === 'Cashed' ? 'Uncashed' : 'Cashed';
                 try {
-                    await supabase.from('expenses').update({ cheque_status: newStatus }).eq('id', expense.id);
+                    const { error } = await supabase.from('expenses').update({ cheque_status: newStatus }).eq('id', expense.id);
+                    if (error) throw error;
                     loadData();
                 } catch (err) {
                     alert('Error updating status: ' + err.message);
@@ -1566,7 +1567,12 @@
                     (chequeFilter === 'cashed' && e.cheque_status === 'Cashed') ||
                     (chequeFilter === 'uncashed' && e.cheque_number && e.cheque_status !== 'Cashed');
                 return matchDate && matchCheque;
-            }).sort((a, b) => (parseInt(a.cheque_number) || 9999999) - (parseInt(b.cheque_number) || 9999999));
+            }).sort((a, b) => {
+                // Latest on top: newest date first, then highest cheque number first
+                const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+                if (dateCmp !== 0) return dateCmp;
+                return (parseInt(b.cheque_number) || 0) - (parseInt(a.cheque_number) || 0);
+            });
             
             const total = filtered.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const chequeExpenses = expenses.filter(e => e.cheque_number && e.date >= expStartDate && e.date <= expEndDate);
@@ -1707,9 +1713,18 @@
                                     <td className="px-3 py-2 text-right text-red-400 font-semibold">{fmtCur(e.amount)}</td>
                                     <td className="px-3 py-2 text-center">
                                         {e.cheque_number ? (
-                                            <button onClick={() => canEdit && toggleChequeStatus(e)} className={`px-2 py-0.5 rounded-full text-xs font-medium ${canEdit ? 'cursor-pointer hover:opacity-80' : ''} ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`} title={canEdit ? 'Click to toggle Cashed/Uncashed' : ''}>
-                                                {e.cheque_status === 'Cashed' ? '✓ Cashed' : '○ Uncashed'}
-                                            </button>
+                                            canEdit ? (
+                                                <label className="inline-flex items-center gap-2 cursor-pointer select-none" title="Tick to mark cheque as Cashed">
+                                                    <input type="checkbox" checked={e.cheque_status === 'Cashed'} onChange={() => toggleChequeStatus(e)} className="w-4 h-4 accent-emerald-500 cursor-pointer" />
+                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400 border border-amber-500/50'}`}>
+                                                        {e.cheque_status === 'Cashed' ? '✓ Cashed' : 'Mark Cashed'}
+                                                    </span>
+                                                </label>
+                                            ) : (
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                                                    {e.cheque_status === 'Cashed' ? '✓ Cashed' : '○ Uncashed'}
+                                                </span>
+                                            )
                                         ) : <span className="text-slate-600">-</span>}
                                     </td>
                                     <td className="px-3 py-2 text-center">

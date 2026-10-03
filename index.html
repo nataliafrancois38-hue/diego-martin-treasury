@@ -1568,10 +1568,13 @@
                     (chequeFilter === 'uncashed' && e.cheque_number && e.cheque_status !== 'Cashed');
                 return matchDate && matchCheque;
             }).sort((a, b) => {
-                // Latest on top: newest date first, then highest cheque number first
-                const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-                if (dateCmp !== 0) return dateCmp;
-                return (parseInt(b.cheque_number) || 0) - (parseInt(a.cheque_number) || 0);
+                // Cheque number order, highest (latest) on top; non-cheque items go to the bottom by date
+                const an = parseInt(a.cheque_number), bn = parseInt(b.cheque_number);
+                const aHas = !isNaN(an), bHas = !isNaN(bn);
+                if (aHas && bHas) return bn - an;
+                if (aHas) return -1;
+                if (bHas) return 1;
+                return String(b.date || '').localeCompare(String(a.date || ''));
             });
             
             const total = filtered.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);

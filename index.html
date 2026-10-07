@@ -125,7 +125,13 @@
         ];
         // This will be overridden with dynamic list in the app
         let EXPENSE_CATEGORIES = [...DEFAULT_EXPENSE_CATEGORIES];
+        // Per-month adjustments so the Conference remittance agrees with the cheque actually paid ({'YYYY-MM': amount})
+        let CONF_ADJ = {};
+        const sumConfAdj = (fromYm, toYm) => Object.entries(CONF_ADJ).reduce((s, [ym, a]) => (ym >= fromYm && ym <= toYm) ? s + (parseFloat(a) || 0) : s, 0);
         
+        // Current month as 'YYYY-MM' (local time)
+        const currentMonthStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+
         // Church Project expenses are tracked separately from regular operating expenses
         const isChurchProjectExpense = (e) => ((e.department || '') === 'Church Project' || (e.category || '') === 'Church Project');
 
@@ -618,17 +624,27 @@
             const loadData = async () => {
                 try {
                     // Paginated fetch to bypass Supabase 1000-row limit
+                    // Pages until an empty page comes back (works whatever row cap the server applies),
+                    // with 'id' as a tie-breaker so rows sharing a date are never skipped or repeated between pages.
                     const fetchAll = async (table, orderCol, ascending) => {
                         let allRows = [];
                         let from = 0;
                         const pageSize = 1000;
-                        while (true) {
-                            const { data, error } = await supabase.from(table).select('*').order(orderCol, { ascending }).range(from, from + pageSize - 1);
-                            if (error || !data || data.length === 0) break;
+                        let useIdOrder = true;
+                        for (let guard = 0; guard < 200; guard++) {
+                            let q = supabase.from(table).select('*').order(orderCol, { ascending });
+                            if (useIdOrder) q = q.order('id', { ascending: true });
+                            const { data, error } = await q.range(from, from + pageSize - 1);
+                            if (error) {
+                                if (useIdOrder && from === 0) { useIdOrder = false; continue; }
+                                console.error(`Load error (${table}):`, error.message);
+                                break;
+                            }
+                            if (!data || data.length === 0) break;
                             allRows = allRows.concat(data);
-                            if (data.length < pageSize) break;
-                            from += pageSize;
+                            from += data.length;
                         }
+                        console.log(`Loaded ${allRows.length} rows from ${table}`);
                         return { data: allRows };
                     };
                     const [titheRes, expenseRes, depositRes, settingsRes, budgetRes, projectsRes] = await Promise.all([
@@ -644,6 +660,10 @@
                     if (depositRes.data) setDeposits(depositRes.data);
                     if (settingsRes.data) {
                         setSettings(settingsRes.data);
+                        try {
+                            const ca = settingsRes.data.conference_adjustments;
+                            CONF_ADJ = (typeof ca === 'string' ? JSON.parse(ca) : ca) || {};
+                        } catch (e) { CONF_ADJ = {}; }
                         // Rebuild EXPENSE_CATEGORIES with custom departments
                         if (settingsRes.data.custom_departments) {
                             try {
@@ -747,6 +767,9 @@
                     delete cleanedEntry.payee;
                     
                     // voucher_number stays as-is (text or null)
+                    // cleared_month: 'YYYY-MM' when cashed, otherwise null
+                    if (cleanedEntry.cheque_status !== 'Cashed' || !cleanedEntry.cleared_month) cleanedEntry.cleared_month = null;
+
                     if (cleanedEntry.voucher_number === '' || cleanedEntry.voucher_number === null || cleanedEntry.voucher_number === undefined) {
                         cleanedEntry.voucher_number = null;
                     }
@@ -771,6 +794,16 @@
                         result = await supabase.from('expenses').insert(data);
                     }
                     
+                    // If cleared_month column doesn't exist yet, retry without it
+                    if (result.error && result.error.message.includes('cleared_month')) {
+                        delete data.cleared_month;
+                        if (entry.id) {
+                            result = await supabase.from('expenses').update(data).eq('id', entry.id);
+                        } else {
+                            result = await supabase.from('expenses').insert(data);
+                        }
+                    }
+
                     // If attachment_url column error, retry without it
                     if (result.error && result.error.message.includes('attachment_url')) {
                         delete data.attachment_url;
@@ -908,6 +941,7 @@
             const dashRegularExpenses = dashExpenses.filter(e => !isChurchProjectExpense(e));
             const dashChurchProjectTotal = dashExpenses.filter(isChurchProjectExpense).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const titheTotals = calculateTitheTotals(dashTitheEntries, dashExpenses);
+            titheTotals.grandTotalConference = (titheTotals.grandTotalConference || 0) + sumConfAdj('0000-00', todayStr.slice(0, 7));
             const expenseTotal = dashRegularExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
             // Search function
@@ -1360,8 +1394,10 @@
                         {/* Bank Reconciliation */}
                         {view === 'bank-rec' && (
                             <BankReconciliationSection 
+                                titheEntries={titheEntries}
                                 expenses={expenses}
-                                deposits={deposits}
+                                settings={settings}
+                                loadData={loadData}
                             />
                         )}
 
@@ -1552,12 +1588,23 @@
             
             const toggleChequeStatus = async (expense) => {
                 const newStatus = expense.cheque_status === 'Cashed' ? 'Uncashed' : 'Cashed';
+                const update = { cheque_status: newStatus, cleared_month: newStatus === 'Cashed' ? currentMonthStr() : null };
                 try {
-                    const { error } = await supabase.from('expenses').update({ cheque_status: newStatus }).eq('id', expense.id);
+                    const { error } = await supabase.from('expenses').update(update).eq('id', expense.id);
                     if (error) throw error;
                     loadData();
                 } catch (err) {
                     alert('Error updating status: ' + err.message);
+                }
+            };
+
+            const setClearedMonth = async (expense, ym) => {
+                try {
+                    const { error } = await supabase.from('expenses').update({ cleared_month: ym || null }).eq('id', expense.id);
+                    if (error) throw error;
+                    loadData();
+                } catch (err) {
+                    alert('Error updating cleared month: ' + err.message);
                 }
             };
             
@@ -1722,6 +1769,11 @@
                                                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400 border border-amber-500/50'}`}>
                                                         {e.cheque_status === 'Cashed' ? '✓ Cashed' : 'Mark Cashed'}
                                                     </span>
+                                                    {e.cheque_status === 'Cashed' && (
+                                                        <input type="month" value={e.cleared_month || ''} onClick={ev => ev.stopPropagation()} onChange={ev => setClearedMonth(e, ev.target.value)}
+                                                            className={`px-1 py-0.5 bg-slate-900 border rounded text-xs ${e.cleared_month ? 'border-slate-600 text-slate-300' : 'border-red-500 text-red-400'}`}
+                                                            title="Month this cheque cleared the bank" />
+                                                    )}
                                                 </label>
                                             ) : (
                                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${e.cheque_status === 'Cashed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
@@ -2176,11 +2228,22 @@
                                     </div>
                                     <div>
                                         <label className="text-xs text-slate-400">Status</label>
-                                        <select value={form.cheque_status || 'Uncashed'} onChange={e => handleChange('cheque_status', e.target.value)} className={inputCls}>
+                                        <select value={form.cheque_status || 'Uncashed'} onChange={e => {
+                                            const st = e.target.value;
+                                            handleChange('cheque_status', st);
+                                            if (st === 'Cashed' && !form.cleared_month) handleChange('cleared_month', currentMonthStr());
+                                            if (st !== 'Cashed') handleChange('cleared_month', '');
+                                        }} className={inputCls}>
                                             <option value="Uncashed">Uncashed</option>
                                             <option value="Cashed">Cashed</option>
                                         </select>
                                     </div>
+                                    {form.cheque_status === 'Cashed' && (
+                                        <div className="col-span-2">
+                                            <label className="text-xs text-slate-400">Cleared the bank in (month on bank statement)</label>
+                                            <input type="month" value={form.cleared_month || ''} onChange={e => handleChange('cleared_month', e.target.value)} className={inputCls} />
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -2351,7 +2414,7 @@
                 const mDepositTotal = mEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
                 // Conference payment (same as Statement: grandTotalConference with monthCount=1)
                 const mTotals = calculateTitheTotals(mEntries, mExpenses, 1);
-                const mConfPayment = mTotals.grandTotalConference || 0;
+                const mConfPayment = (mTotals.grandTotalConference || 0) + (CONF_ADJ[mStr] || 0);
                 // All expenses (including Church Project) come out of the chequing account
                 const mExpTotal = mExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                 
@@ -2397,6 +2460,12 @@
             const ytdEntries = titheEntries.filter(e => e.date >= yearStart && e.date <= monthEnd);
             const ytdExpenses = expenses.filter(e => e.date >= yearStart && e.date <= monthEnd);
             const allTimeTotals = calculateTitheTotals(ytdEntries, ytdExpenses, stmtMon);
+            // Conference adjustments (to agree with remittance cheques actually paid)
+            const applyConfAdj = (t, adj) => { t.conferenceAdjustment = adj; t.grandTotalConference = (t.grandTotalConference || 0) + adj; };
+            const stmtPrevYm = `${stmtYear}-${String(Math.max(stmtMon - 1, 0)).padStart(2, '0')}`;
+            applyConfAdj(thisMonthTotals, sumConfAdj(month, month));
+            applyConfAdj(prevMonthTotals, stmtMon > 1 ? sumConfAdj(`${stmtYear}-01`, stmtPrevYm) : 0);
+            applyConfAdj(allTimeTotals, sumConfAdj(`${stmtYear}-01`, month));
 
             // Church Project expenses tracked separately from regular expenses
             const monthChurchProjectExpenses = monthExpenses.filter(isChurchProjectExpense);
@@ -2485,8 +2554,8 @@
                 // 40% and Total Conference
                 const tm40Percent = tmTotals.percentage40 || 0;
                 const pm40Percent = pmTotals.percentage40 || 0;
-                const tmTotalConf = tmSubTotalConf + tm40Percent;
-                const pmTotalConf = pmSubTotalConf + pm40Percent;
+                const tmTotalConf = tmSubTotalConf + tm40Percent + (tmTotals.conferenceAdjustment || 0);
+                const pmTotalConf = pmSubTotalConf + pm40Percent + (pmTotals.conferenceAdjustment || 0);
                 
                 // Church Operating Income (60%)
                 const tmChurchOperating = tmTotals.churchOperating || 0;
@@ -2633,6 +2702,9 @@
                 setCell('B17', tmTotalConf, acctFmt);
                 setCell('C17', pmTotalConf, acctFmt);
                 setFormula('D17', 'B17+C17', acctFmt);
+                if (Math.abs(tmTotals.conferenceAdjustment || 0) > 0.004 || Math.abs(pmTotals.conferenceAdjustment || 0) > 0.004) {
+                    setCell('E17', `Includes adjustment to agree with remittance cheque(s): this month ${(tmTotals.conferenceAdjustment || 0).toFixed(2)}, previous months ${(pmTotals.conferenceAdjustment || 0).toFixed(2)}`);
+                }
                 
                 // Row 18: empty
                 
@@ -2680,7 +2752,7 @@
                 setFormula('B35', '-B16', acctFmt);
                 setCell('C35', -Math.abs(pm40Percent), acctFmt);
                 setFormula('D35', 'B35+C35', acctFmt);
-                
+
                 // Row 36: TOTAL CHURCH OPERATING INCOME (formula: =B34+B35)
                 setCell('A36', 'TOTAL CHURCH OPERATING INCOME');
                 setFormula('B36', 'B34+B35', acctFmt);
@@ -2821,11 +2893,11 @@
                 const tm40Pct=Math.abs(tmTotals.percentage40||0), tmChurchOp=tmTotals.churchOperating||0;
                 const tmTotalChurchIncome=tmTotals.totalChurchFund||0;
                 const tmSubTotalConf=(tmTotals.tithe||0)+(tmTotals.special_offering||0)+(tmTotals.ingathering||0)+(tmTotals.nehemiah||0)+(tmTotals.radio||0);
-                const tmTotalConf=tmSubTotalConf+tm40Pct;
+                const tmTotalConf=tmSubTotalConf+tm40Pct+(tmTotals.conferenceAdjustment||0);
                 // Previous months
                 const pmSubTotalConf=(pmTotals.tithe||0)+(pmTotals.special_offering||0)+(pmTotals.ingathering||0)+(pmTotals.nehemiah||0)+(pmTotals.radio||0);
                 const pm40Pct=Math.abs(pmTotals.percentage40||0);
-                const pmTotalConf=pmSubTotalConf+pm40Pct;
+                const pmTotalConf=pmSubTotalConf+pm40Pct+(pmTotals.conferenceAdjustment||0);
                 const pmChurchOp=pmTotals.churchOperating||0;
                 const pmTotalChurchIncome=pmTotals.totalChurchFund||0;
                 // Totals (YTD)
@@ -3113,6 +3185,9 @@
                                         <tr className="border-t border-slate-600"><td className="text-slate-300 py-1 pl-4 font-medium">Budget Covenant after contribution</td><td className="text-right text-slate-300">{fmtCur(thisMonthTotals.baseFor40_60 || 0)}</td><td className="text-right text-slate-400">{fmtCur(allTimeTotals.baseFor40_60 || 0)}</td></tr>
                                         <tr><td className="text-amber-400 py-1 pl-4">40% of Total Church Offering</td><td className="text-right text-amber-400">{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-amber-300">{fmtCur(allTimeTotals.percentage40)}</td></tr>
                                         
+                                        {(Math.abs(thisMonthTotals.conferenceAdjustment || 0) > 0.004 || Math.abs(allTimeTotals.conferenceAdjustment || 0) > 0.004) && (
+                                            <tr><td className="text-amber-400 py-1">Adjustment to agree with remittance cheque</td><td className="text-right text-amber-400">{fmtCur(thisMonthTotals.conferenceAdjustment || 0)}</td><td className="text-right text-amber-300">{fmtCur(allTimeTotals.conferenceAdjustment || 0)}</td></tr>
+                                        )}
                                         <tr className="font-bold bg-emerald-500/10"><td className="text-emerald-400 py-2">TOTAL CONFERENCE FUNDS</td><td className="text-right text-emerald-400">{fmtCur(thisMonthTotals.grandTotalConference)}</td><td className="text-right text-emerald-300">{fmtCur(allTimeTotals.grandTotalConference)}</td></tr>
                                     </tbody>
                                 </table>
@@ -3131,8 +3206,7 @@
                                                 <td className="text-right text-slate-400">{fmtCur(allTimeTotals[f.key])}</td>
                                             </tr>
                                         ))}
-                                        <tr className="font-bold border-t border-slate-600"><td className="text-slate-300 py-1">TOTAL CHURCH INCOME</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.totalChurchFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalChurchFund)}</td></tr>
-                                        <tr><td className="text-red-400 py-1">Less 40% to Local Conference</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.percentage40)}</td></tr>
+                                        <tr className="font-bold border-t border-slate-600"><td className="text-slate-300 py-1">TOTAL CHURCH INCOME</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.totalChurchFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalChurchFund)}</td></tr>                                        <tr><td className="text-red-400 py-1">Less 40% to Local Conference</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.percentage40)}</td></tr>
                                         <tr className="font-bold bg-blue-500/10"><td className="text-blue-400 py-2">TOTAL CHURCH OPERATING INCOME (60%)</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.churchOperating)}</td><td className="text-right text-blue-300">{fmtCur(allTimeTotals.churchOperating)}</td></tr>
                                     </tbody>
                                 </table>
@@ -4374,7 +4448,7 @@
             };
             
             // Current year data (2026) from database
-            // Church Operating Income = Total Church Fund - 40% of (Budget Covenant - School - Children's Home - Fixed School)
+            // Church Operating Income = Budget Covenant - 40% of (Budget Covenant - School tithe - Children's Home - Wesport expenses)
             const thisYearTotalChurchFund = Array(12).fill(0);
             const thisYearBudgetCovenant = getMonthlyData(titheEntries, currentYear, 'budget_covenant');
             const thisYearSchool = getMonthlyData(titheEntries, currentYear, 'school');
@@ -4384,9 +4458,16 @@
                 const monthlyField = getMonthlyData(titheEntries, currentYear, f.key);
                 monthlyField.forEach((v, i) => thisYearTotalChurchFund[i] += v);
             });
-            const FIXED_SCHOOL_MONTHLY = 5000;
+            // Actual School - Wesport expenses per month (replaces old fixed $5000 assumption)
+            const thisYearWesport = Array(12).fill(0);
+            expenses.forEach(e => {
+                if (e.category !== 'School - Wesport' && e.department !== 'School - Wesport') return;
+                const parts = String(e.date || '').split('-');
+                const y = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+                if (y === currentYear && m >= 1 && m <= 12) thisYearWesport[m - 1] += parseFloat(e.amount) || 0;
+            });
             const thisYearIncome = thisYearBudgetCovenant.map((v, i) => {
-                const baseFor40 = v - (thisYearSchool[i] || 0) - FIXED_SCHOOL_MONTHLY - (thisYearChildrensHome[i] || 0);
+                const baseFor40 = Math.max(0, v - (thisYearSchool[i] || 0) - (thisYearWesport[i] || 0) - (thisYearChildrensHome[i] || 0));
                 const pct40 = baseFor40 * 0.4;
                 return thisYearTotalChurchFund[i] - pct40;
             });
@@ -4443,7 +4524,7 @@
             const ytdBaseFor40 = thisYearBudgetCovenant.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0) 
                 - thisYearSchool.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0)
                 - thisYearChildrensHome.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0)
-                - (FIXED_SCHOOL_MONTHLY * (currentMonth + 1));
+                - thisYearWesport.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0);
             const ytdConferenceFund = ytdTithe + (ytdBaseFor40 * 0.4);
             // Project conference fund based on YTD ratio
             const ytdTotalChurchFund = thisYearTotalChurchFund.slice(0, currentMonth + 1).reduce((s, v) => s + v, 0);
@@ -5383,259 +5464,435 @@
         }
 
         // Bank Reconciliation Section Component - Automatic
-        function BankReconciliationSection({ expenses, deposits }) {
+        // ===== Bank Reconciliation =====
+        // Month helpers
+        const BR_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const brMonthLabel = (ym) => { const [y, m] = ym.split('-').map(Number); return `${BR_MONTHS[m - 1]} ${y}`; };
+        const brMonthEndLabel = (ym) => { const [y, m] = ym.split('-').map(Number); return `${new Date(y, m, 0).getDate()} ${BR_MONTHS[m - 1]} ${y}`; };
+        const brNextMonthName = (ym) => { const [y, m] = ym.split('-').map(Number); return BR_MONTHS[m % 12]; };
+        const brPayee = (e) => e.description?.includes(' - ') ? e.description.split(' - ')[0].trim() : (e.description || '');
+
+        // Compute the full reconciliation for one month (YYYY-MM).
+        // Book side follows the Financial Statement exactly: opening + deposits - conference remittance - all expenses (incl. Church Project).
+        function computeBankRec(ym, titheEntries, expenses, janOpening, rec, allRecs) {
+            const [year, month] = ym.split('-').map(Number);
+            let opening = parseFloat(janOpening) || 0;
+            let mv = null;
+            const confByMonth = [];
+            for (let m = 1; m <= month; m++) {
+                const mStr = `${year}-${String(m).padStart(2, '0')}`;
+                const mEntries = titheEntries.filter(e => e.date >= mStr + '-01' && e.date <= mStr + '-31');
+                const mExpenses = expenses.filter(e => e.date >= mStr + '-01' && e.date <= mStr + '-31');
+                const deposits = mEntries.reduce((s, e) => s + (parseFloat(e.total_received) || 0), 0);
+                const conference = (calculateTitheTotals(mEntries, mExpenses, 1).grandTotalConference || 0) + (CONF_ADJ[mStr] || 0);
+                const expTotal = mExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                const closing = opening + deposits - conference - expTotal;
+                confByMonth.push({ ym: mStr, amount: conference });
+                if (m === month) mv = { opening, deposits, conference, expTotal, closing, mEntries, mExpenses };
+                opening = closing;
+            }
+            const monthEnd = ym + '-31';
+
+            // Collections grouped by date (each Sabbath's deposit)
+            const byDate = {};
+            mv.mEntries.forEach(e => { byDate[e.date] = (byDate[e.date] || 0) + (parseFloat(e.total_received) || 0); });
+            const collections = Object.entries(byDate).map(([date, total]) => ({ date, total })).sort((a, b) => a.date.localeCompare(b.date));
+            const ditDates = (rec && Array.isArray(rec.deposits_in_transit)) ? rec.deposits_in_transit : [];
+            const dit = collections.filter(c => ditDates.includes(c.date));
+            const ditOther = parseFloat(rec?.dit_other) || 0;
+            const ditTotal = dit.reduce((s, c) => s + c.total, 0) + ditOther;
+
+            // Outstanding cheques as at month end: issued on/before month end and not cleared by month end
+            const cheques = expenses.filter(e => e.cheque_number && e.date <= monthEnd && (parseFloat(e.amount) || 0) !== 0);
+            const outstanding = cheques.filter(e => e.cheque_status !== 'Cashed' || (e.cleared_month && e.cleared_month > ym))
+                .sort((a, b) => (parseInt(a.cheque_number) || 0) - (parseInt(b.cheque_number) || 0));
+            const osOther = parseFloat(rec?.os_other) || 0;  // e.g. prior-year cheques not entered in the app
+            const outstandingTotal = outstanding.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0) + osOther;
+            const missingCleared = cheques.filter(e => e.cheque_status === 'Cashed' && !e.cleared_month);
+
+            const stmtBal = parseFloat(rec?.statement_balance) || 0;
+            const hasStmt = rec && rec.statement_balance !== null && rec.statement_balance !== undefined && rec.statement_balance !== '';
+            const charges = parseFloat(rec?.bank_charges) || 0;
+            const interest = parseFloat(rec?.interest) || 0;
+            const otherAdj = parseFloat(rec?.other_adj) || 0;
+
+            // Conference remittances not yet cleared by month end (each month's cleared month is saved on that month's reconciliation)
+            const recsAll = { ...(allRecs || {}), [ym]: rec || {} };
+            const confOutstanding = confByMonth.filter(c => { const cm = recsAll[c.ym]?.conference_cleared_month; return !cm || cm > ym; });
+            const confOutstandingTotal = confOutstanding.reduce((s, c) => s + c.amount, 0);
+            const adjustedBank = stmtBal + ditTotal - outstandingTotal - confOutstandingTotal;
+            const adjustedBook = mv.closing - charges + interest + otherAdj;
+            const difference = adjustedBank - adjustedBook;
+
+            return { ym, ...mv, collections, dit, ditOther, osOther, ditTotal, confOutstanding, confOutstandingTotal, outstanding, outstandingTotal, missingCleared,
+                stmtBal, hasStmt, charges, interest, otherAdj, adjustedBank, adjustedBook, difference,
+                reconciled: hasStmt && Math.abs(difference) < 0.01, notes: rec?.notes || '' };
+        }
+
+        function BankReconciliationSection({ titheEntries, expenses, settings, loadData }) {
+            const { supabase } = useContext(AuthContext);
+            const thisYear = new Date().getFullYear();
             const [selectedMonth, setSelectedMonth] = useState(() => {
-                const d = new Date();
-                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+                const d = new Date(); d.setDate(15); d.setMonth(d.getMonth() - 1);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             });
-            const [bankStatementBalance, setBankStatementBalance] = useState('');
-            const [bankCharges, setBankCharges] = useState('');
-            const [interestEarned, setInterestEarned] = useState('');
-            const [otherAdjustments, setOtherAdjustments] = useState('');
-            const [prevBookBalance, setPrevBookBalance] = useState('');
+            const [recs, setRecs] = useState({});
+            const [form, setForm] = useState({ statement_balance: '', bank_charges: '', interest: '', other_adj: '', deposits_in_transit: [], notes: '', dit_other: '', conference_cleared_month: '', os_other: '' });
+            const [loadError, setLoadError] = useState('');
+            const [saving, setSaving] = useState(false);
+            const [exportFrom, setExportFrom] = useState(`${thisYear}-01`);
+            const [exportTo, setExportTo] = useState(`${thisYear}-06`);
 
-            // Parse selected month
-            const year = parseInt(selectedMonth.split('-')[0]);
-            const month = parseInt(selectedMonth.split('-')[1]);
-            const monthStart = `${selectedMonth}-01`;
-            const lastDay = new Date(year, month, 0).getDate();
-            const monthEnd = `${selectedMonth}-${String(lastDay).padStart(2,'0')}`;
-            const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-            const monthLabel = monthNames[month-1] + ' ' + year;
+            const loadRecs = async () => {
+                const { data, error } = await supabase.from('bank_recs').select('*');
+                if (error) { setLoadError(error.message); return; }
+                setLoadError('');
+                const map = {};
+                (data || []).forEach(r => { map[r.month] = r; });
+                setRecs(map);
+            };
+            useEffect(() => { loadRecs(); }, []);
 
-            // Auto-calculate from existing data
-            // Deposits for this month
-            const monthDeposits = deposits.filter(d => d.date >= monthStart && d.date <= monthEnd);
-            const totalDeposits = monthDeposits.reduce((s,d) => s + (Number(d.amount)||0), 0);
+            useEffect(() => {
+                const r = recs[selectedMonth];
+                setForm({
+                    statement_balance: r?.statement_balance ?? '',
+                    bank_charges: r?.bank_charges ?? '',
+                    interest: r?.interest ?? '',
+                    other_adj: r?.other_adj ?? '',
+                    deposits_in_transit: Array.isArray(r?.deposits_in_transit) ? r.deposits_in_transit : [],
+                    notes: r?.notes ?? '',
+                    dit_other: r?.dit_other ?? '',
+                    conference_cleared_month: r?.conference_cleared_month ?? '',
+                    os_other: r?.os_other ?? ''
+                });
+            }, [selectedMonth, recs]);
 
-            // All cheque expenses
-            const monthCheques = expenses.filter(e => e.cheque_number && e.date >= monthStart && e.date <= monthEnd);
-            const totalCheques = monthCheques.reduce((s,e) => s + (Number(e.amount)||0), 0);
+            const janOpening = settings?.previous_balance || 0;
+            const rec = computeBankRec(selectedMonth, titheEntries, expenses, janOpening, form, recs);
+            const savedRec = recs[selectedMonth];
+            const dirty = JSON.stringify({
+                statement_balance: savedRec?.statement_balance ?? '', bank_charges: savedRec?.bank_charges ?? '', interest: savedRec?.interest ?? '',
+                other_adj: savedRec?.other_adj ?? '', deposits_in_transit: Array.isArray(savedRec?.deposits_in_transit) ? savedRec.deposits_in_transit : [], notes: savedRec?.notes ?? '',
+                dit_other: savedRec?.dit_other ?? '', conference_cleared_month: savedRec?.conference_cleared_month ?? '', os_other: savedRec?.os_other ?? ''
+            }) !== JSON.stringify(form);
 
-            // Outstanding (uncashed) cheques - ALL uncashed cheques up to end of month
-            const uncashedCheques = expenses.filter(e => e.cheque_number && e.cheque_status !== 'Cashed' && e.date <= monthEnd);
-            const totalUncashed = uncashedCheques.reduce((s,e) => s + (Number(e.amount)||0), 0);
+            const toNum = (v) => (v === '' || v === null || v === undefined) ? null : (parseFloat(v) || 0);
+            const saveRec = async () => {
+                setSaving(true);
+                const row = {
+                    month: selectedMonth,
+                    statement_balance: toNum(form.statement_balance),
+                    bank_charges: toNum(form.bank_charges) || 0,
+                    interest: toNum(form.interest) || 0,
+                    other_adj: toNum(form.other_adj) || 0,
+                    deposits_in_transit: form.deposits_in_transit,
+                    notes: form.notes || null,
+                    dit_other: toNum(form.dit_other) || 0,
+                    conference_cleared_month: form.conference_cleared_month || null,
+                    os_other: toNum(form.os_other) || 0,
+                    updated_at: new Date().toISOString()
+                };
+                const { error } = await supabase.from('bank_recs').upsert(row, { onConflict: 'month' });
+                setSaving(false);
+                if (error) { alert('Error saving reconciliation: ' + error.message); return; }
+                await loadRecs();
+            };
 
-            // Deposits in transit - deposits in the month that might not have cleared
-            // We consider all deposits from the last 3 days of the month as potentially in transit
-            const transitDate = new Date(year, month-1, lastDay-2).toISOString().split('T')[0];
-            const depositsInTransit = monthDeposits.filter(d => d.date >= transitDate);
-            const totalDepositsInTransit = depositsInTransit.reduce((s,d) => s + (Number(d.amount)||0), 0);
+            const toggleDit = (date) => setForm(f => ({ ...f, deposits_in_transit: f.deposits_in_transit.includes(date) ? f.deposits_in_transit.filter(d => d !== date) : [...f.deposits_in_transit, date] }));
 
-            // Cash expenses this month (no cheque number)
-            const cashExpenses = expenses.filter(e => !e.cheque_number && e.date >= monthStart && e.date <= monthEnd);
-            const totalCashExpenses = cashExpenses.reduce((s,e) => s + (Number(e.amount)||0), 0);
+            const setClearedMonth = async (expense, ym) => {
+                const { error } = await supabase.from('expenses').update({ cleared_month: ym || null }).eq('id', expense.id);
+                if (error) { alert('Error updating cleared month: ' + error.message); return; }
+                loadData && loadData();
+            };
 
-            // All expenses this month
-            const allMonthExpenses = expenses.filter(e => e.date >= monthStart && e.date <= monthEnd);
-            const totalMonthExpenses = allMonthExpenses.reduce((s,e) => s + (Number(e.amount)||0), 0);
-
-            // Book balance calculation
-            const prevBal = parseFloat(prevBookBalance) || 0;
-            const bankChg = parseFloat(bankCharges) || 0;
-            const intEarned = parseFloat(interestEarned) || 0;
-            const otherAdj = parseFloat(otherAdjustments) || 0;
-            const bookBalance = prevBal + totalDeposits - totalMonthExpenses - bankChg + intEarned + otherAdj;
-
-            // Bank side
-            const bankStmtBal = parseFloat(bankStatementBalance) || 0;
-            const adjustedBankBalance = bankStmtBal + totalDepositsInTransit - totalUncashed;
-
-            const difference = adjustedBankBalance - bookBalance;
-
-            const inputCls = "w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right text-sm";
-
-            const exportBankReconciliation = () => {
+            // ---- Excel export: one sheet per month + summary ----
+            const exportRange = () => {
                 try {
-                    const data = [
-                        ['BANK RECONCILIATION STATEMENT'],
-                        ['Diego Martin SDA Church'],
-                        [`For the Month of ${monthLabel}`],
-                        [],
-                        ['BOOK BALANCE', '', '', 'BANK BALANCE'],
-                        [],
-                        ['Balance from Previous Month', prevBal, '', 'Bank Statement Balance', bankStmtBal],
-                        ['Add: Total Deposits', totalDeposits, '', '', ''],
-                        ['Less: Total Expenses', -totalMonthExpenses, '', 'Add: Deposits in Transit', ''],
-                        ['Less: Bank Charges', -bankChg],
-                        ['Add: Interest Earned', intEarned],
-                        ['Other Adjustments', otherAdj],
-                        [],
-                    ];
-                    // Add deposits in transit detail
-                    depositsInTransit.forEach(d => {
-                        data.push(['', '', '', `  ${d.date} - ${d.description || 'Deposit'}`, Number(d.amount)||0]);
-                    });
-                    data.push(['', '', '', 'Total Deposits in Transit', totalDepositsInTransit]);
-                    data.push([]);
-                    data.push(['', '', '', 'Less: Outstanding Cheques', '']);
-                    // Add uncashed cheques detail
-                    uncashedCheques.forEach(e => {
-                        const payee = e.description?.includes(' - ') ? e.description.split(' - ')[0].trim() : (e.description || '');
-                        data.push(['', '', '', `  Chq#${e.cheque_number} - ${payee} (${e.date})`, -(Number(e.amount)||0)]);
-                    });
-                    data.push(['', '', '', 'Total Outstanding Cheques', -totalUncashed]);
-                    data.push([]);
-                    data.push(['ADJUSTED BOOK BALANCE', bookBalance, '', 'ADJUSTED BANK BALANCE', adjustedBankBalance]);
-                    data.push([]);
-                    data.push(['DIFFERENCE', difference]);
-                    data.push([Math.abs(difference) < 0.01 ? 'STATUS: RECONCILED ✓' : 'STATUS: NOT RECONCILED ✗']);
-
-                    const ws = XLSX.utils.aoa_to_sheet(data);
-                    ws['!cols'] = [{wch: 30}, {wch: 16}, {wch: 5}, {wch: 40}, {wch: 16}];
-                    const numFmt = '_("$"* #,##0.00_)';
-                    const rng = XLSX.utils.decode_range(ws['!ref']);
-                    for (let R = 0; R <= rng.e.r; R++) {
-                        for (const C of [1, 4]) {
-                            const addr = XLSX.utils.encode_cell({r:R, c:C});
-                            if (ws[addr] && typeof ws[addr].v === 'number') ws[addr].z = numFmt;
-                        }
+                    if (exportFrom > exportTo) { alert('"From" month must be before "To" month.'); return; }
+                    const months = [];
+                    let [y, m] = exportFrom.split('-').map(Number);
+                    while (`${y}-${String(m).padStart(2, '0')}` <= exportTo) {
+                        months.push(`${y}-${String(m).padStart(2, '0')}`);
+                        m++; if (m > 12) { m = 1; y++; }
                     }
+                    const fmtA = '_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)';
                     const wb = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(wb, ws, 'Bank Reconciliation');
-                    XLSX.writeFile(wb, `Bank_Reconciliation_${selectedMonth}.xlsx`);
+                    const results = months.map(ym => computeBankRec(ym, titheEntries, expenses, janOpening, recs[ym], recs));
+
+                    // Summary sheet
+                    const sum = [
+                        ['DIEGO MARTIN SDA CHURCH'],
+                        ['BANK RECONCILIATION SUMMARY — CHEQUING ACCOUNT'],
+                        [`${brMonthLabel(exportFrom)} to ${brMonthLabel(exportTo)}`],
+                        [],
+                        ['Month', 'Balance per Bank Statement', 'Add: Deposits in Transit', 'Less: Outstanding Cheques', 'Less: Conference Remittance O/S', 'Adjusted Bank Balance', 'Balance per Cash Book', 'Book Adjustments', 'Adjusted Book Balance', 'Difference', 'Status']
+                    ];
+                    results.forEach(r => sum.push([
+                        brMonthLabel(r.ym), r.hasStmt ? r.stmtBal : 'Not entered', r.ditTotal, -r.outstandingTotal, -r.confOutstandingTotal, r.adjustedBank,
+                        r.closing, -r.charges + r.interest + r.otherAdj, r.adjustedBook, r.hasStmt ? r.difference : '',
+                        !r.hasStmt ? 'Statement balance not entered' : (r.reconciled ? 'Reconciled' : 'Not reconciled')
+                    ]));
+                    const wsS = XLSX.utils.aoa_to_sheet(sum);
+                    wsS['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 28 }];
+                    const rS = XLSX.utils.decode_range(wsS['!ref']);
+                    for (let R = 5; R <= rS.e.r; R++) for (let C = 1; C <= 9; C++) { const a = XLSX.utils.encode_cell({ r: R, c: C }); if (wsS[a] && typeof wsS[a].v === 'number') wsS[a].z = fmtA; }
+                    XLSX.utils.book_append_sheet(wb, wsS, 'Summary');
+
+                    // Month sheets
+                    results.forEach(r => {
+                        const d = [
+                            ['DIEGO MARTIN SDA CHURCH'],
+                            ['BANK RECONCILIATION STATEMENT — CHEQUING ACCOUNT'],
+                            [`For the month ended ${brMonthEndLabel(r.ym)}`],
+                            [],
+                            ['BALANCE PER BANK STATEMENT', '', '', r.hasStmt ? r.stmtBal : 'Not entered'],
+                            [],
+                            ['Add: Deposits in transit'],
+                        ];
+                        if (r.dit.length === 0 && !r.ditOther) d.push(['', 'None', '', '']);
+                        r.dit.forEach(c => d.push(['', `${c.date}  Sabbath collection`, c.total, '']));
+                        if (r.ditOther) d.push(['', 'Other receipts recorded, not yet credited by bank', r.ditOther, '']);
+                        d.push(['', 'Total deposits in transit', '', r.ditTotal]);
+                        d.push([]);
+                        d.push(['Less: Outstanding cheques']);
+                        d.push(['', 'Chq #   Date   Payee', '', '']);
+                        if (r.outstanding.length === 0 && !r.osOther) d.push(['', 'None', '', '']);
+                        r.outstanding.forEach(e => d.push(['', `${e.cheque_number}   ${e.date}   ${brPayee(e)}`, parseFloat(e.amount) || 0, '']));
+                        if (r.osOther) d.push(['', 'Prior-year / other cheques not in the app', r.osOther, '']);
+                        d.push(['', 'Total outstanding cheques', '', -r.outstandingTotal]);
+                        d.push([]);
+                        d.push(['Less: Conference remittances not yet paid at month end']);
+                        if (r.confOutstanding.length === 0) d.push(['', 'None', '', '']);
+                        r.confOutstanding.forEach(c => d.push(['', `${brMonthLabel(c.ym)} remittance`, c.amount, '']));
+                        d.push(['', 'Total Conference remittances outstanding', '', -r.confOutstandingTotal]);
+                        d.push([]);
+                        d.push(['ADJUSTED BANK BALANCE', '', '', r.adjustedBank]);
+                        d.push([]);
+                        d.push([]);
+                        d.push(['BALANCE PER CASH BOOK (Financial Statement)', '', '', r.closing]);
+                        d.push(['', 'Less: Bank charges not yet recorded', '', -r.charges]);
+                        d.push(['', 'Add: Interest not yet recorded', '', r.interest]);
+                        d.push(['', 'Other adjustments', '', r.otherAdj]);
+                        d.push(['ADJUSTED BOOK BALANCE', '', '', r.adjustedBook]);
+                        d.push([]);
+                        d.push(['DIFFERENCE', '', '', r.hasStmt ? r.difference : '']);
+                        d.push(['STATUS', '', '', !r.hasStmt ? 'Bank statement balance not entered' : (r.reconciled ? 'RECONCILED' : 'NOT RECONCILED')]);
+                        if (r.missingCleared.length > 0) d.push(['NOTE', `${r.missingCleared.length} cashed cheque(s) have no cleared month recorded`, '', '']);
+                        if (r.notes) d.push(['NOTES', r.notes, '', '']);
+                        d.push([]);
+                        d.push(['CASH BOOK MOVEMENT FOR THE MONTH']);
+                        d.push(['', 'Opening balance', '', r.opening]);
+                        d.push(['', 'Add: Deposits (tithe & offering collections)', '', r.deposits]);
+                        d.push(['', 'Less: Conference remittance', '', -r.conference]);
+                        d.push(['', 'Less: Expenses (incl. Church Project)', '', -r.expTotal]);
+                        d.push(['', 'Closing balance', '', r.closing]);
+                        d.push([]);
+                        d.push([]);
+                        d.push(['Prepared by: ______________________', '', 'Date: ____________']);
+                        d.push([]);
+                        d.push(['Reviewed by: ______________________', '', 'Date: ____________']);
+
+                        const ws = XLSX.utils.aoa_to_sheet(d);
+                        ws['!cols'] = [{ wch: 48 }, { wch: 44 }, { wch: 16 }, { wch: 18 }];
+                        const rg = XLSX.utils.decode_range(ws['!ref']);
+                        for (let R = 0; R <= rg.e.r; R++) for (const C of [2, 3]) { const a = XLSX.utils.encode_cell({ r: R, c: C }); if (ws[a] && typeof ws[a].v === 'number') ws[a].z = fmtA; }
+                        const [yy, mm] = r.ym.split('-').map(Number);
+                        XLSX.utils.book_append_sheet(wb, ws, `${BR_MONTHS[mm - 1].slice(0, 3)} ${yy}`);
+                    });
+                    XLSX.writeFile(wb, `Bank_Reconciliation_${exportFrom}_to_${exportTo}.xlsx`);
                 } catch (err) {
                     alert('Export error: ' + err.message);
                 }
             };
 
+            const inputCls = "w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-right text-sm";
+            const statusOk = rec.reconciled;
+
             return (
                 <div className="space-y-4">
+                    {loadError && (
+                        <div className="p-4 rounded-xl border border-red-500/40 bg-red-500/10 text-sm text-red-300">
+                            Could not load saved reconciliations ({loadError}). Run the bank reconciliation SQL in Supabase, then refresh.
+                        </div>
+                    )}
+
                     {/* Header */}
                     <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
                         <div className="flex flex-wrap gap-4 items-end justify-between">
                             <div>
-                                <label className="text-xs text-slate-400 block mb-1">Select Month</label>
+                                <label className="text-xs text-slate-400 block mb-1">Month</label>
                                 <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
                             </div>
                             <div className="text-center">
-                                <h3 className="text-lg font-bold text-white">Bank Reconciliation</h3>
-                                <p className="text-amber-400 text-sm">{monthLabel}</p>
+                                <h3 className="text-lg font-bold text-white">Bank Reconciliation — Chequing Account</h3>
+                                <p className="text-amber-400 text-sm">As at {brMonthEndLabel(selectedMonth)}</p>
                             </div>
-                            <button onClick={exportBankReconciliation} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-500">📥 Export to Excel</button>
+                            <button onClick={saveRec} disabled={saving || !dirty} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-500 disabled:opacity-40">{saving ? 'Saving…' : dirty ? '💾 Save Month' : '✓ Saved'}</button>
+                        </div>
+                        <div className="flex flex-wrap gap-3 items-end mt-4 pt-4 border-t border-slate-700">
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-1">Export from</label>
+                                <input type="month" value={exportFrom} onChange={e => setExportFrom(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-1">to</label>
+                                <input type="month" value={exportTo} onChange={e => setExportTo(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" />
+                            </div>
+                            <button onClick={exportRange} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-500">📥 Export Reconciliations (Excel)</button>
+                            <span className="text-xs text-slate-500">One sheet per month plus a summary. Save each month first.</span>
                         </div>
                     </div>
 
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-                            <p className="text-xs text-emerald-400">Total Deposits</p>
-                            <p className="text-lg font-bold text-emerald-400">{fmtCur(totalDeposits)}</p>
-                            <p className="text-xs text-slate-500">{monthDeposits.length} deposits</p>
+                    {/* Cheques needing a cleared month */}
+                    {rec.missingCleared.length > 0 && (
+                        <div className="bg-red-500/10 rounded-xl border border-red-500/30 p-4">
+                            <p className="text-sm font-semibold text-red-400 mb-1">{rec.missingCleared.length} cashed cheque(s) need a cleared month</p>
+                            <p className="text-xs text-slate-400 mb-3">Pick the month each cheque appears on the bank statement. Until then they are treated as cleared, which can hide an outstanding cheque.</p>
+                            <div className="space-y-1 max-h-64 overflow-y-auto">
+                                {rec.missingCleared.sort((a, b) => (parseInt(a.cheque_number) || 0) - (parseInt(b.cheque_number) || 0)).map(e => (
+                                    <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-1 px-2 text-sm border-b border-slate-700/50">
+                                        <span className="text-slate-300">Chq #{e.cheque_number} · {e.date} · {brPayee(e)}</span>
+                                        <span className="flex items-center gap-2">
+                                            <span className="text-amber-400">{fmtCur(e.amount)}</span>
+                                            <input type="month" defaultValue="" onChange={ev => setClearedMonth(e, ev.target.value)} className="px-2 py-1 bg-slate-900 border border-red-500 rounded text-xs text-white" />
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-center">
-                            <p className="text-xs text-red-400">Total Expenses</p>
-                            <p className="text-lg font-bold text-red-400">{fmtCur(totalMonthExpenses)}</p>
-                            <p className="text-xs text-slate-500">{allMonthExpenses.length} items</p>
-                        </div>
-                        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
-                            <p className="text-xs text-amber-400">Outstanding Cheques</p>
-                            <p className="text-lg font-bold text-amber-400">{fmtCur(totalUncashed)}</p>
-                            <p className="text-xs text-slate-500">{uncashedCheques.length} cheques</p>
-                        </div>
-                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
-                            <p className="text-xs text-blue-400">Deposits in Transit</p>
-                            <p className="text-lg font-bold text-blue-400">{fmtCur(totalDepositsInTransit)}</p>
-                            <p className="text-xs text-slate-500">{depositsInTransit.length} deposits</p>
-                        </div>
-                    </div>
+                    )}
 
-                    {/* Two Column Layout */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {/* Book Balance Side */}
+                        {/* Bank side */}
                         <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
-                            <h3 className="text-lg font-semibold text-blue-400 mb-4 text-center border-b border-slate-700 pb-2">BOOK BALANCE</h3>
-                            <div className="space-y-3">
+                            <h3 className="text-base font-semibold text-amber-400 mb-4 text-center border-b border-slate-700 pb-2">BANK SIDE</h3>
+                            <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Balance from Previous Month</label>
-                                    <input type="number" step="0.01" value={prevBookBalance} onChange={e => setPrevBookBalance(e.target.value)} placeholder="Enter previous month's closing balance" className={inputCls} />
+                                    <label className="text-xs text-slate-400 block mb-1">Balance per bank statement at {brMonthEndLabel(selectedMonth)}</label>
+                                    <input type="number" step="0.01" value={form.statement_balance} onChange={e => setForm(f => ({ ...f, statement_balance: e.target.value }))} placeholder="Enter from bank statement" className={inputCls} />
                                 </div>
-                                <div className="flex justify-between items-center py-2 border-t border-slate-700">
-                                    <span className="text-sm text-emerald-400">Add: Total Deposits (auto)</span>
-                                    <span className="text-emerald-400 font-semibold">{fmtCur(totalDeposits)}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-2">
-                                    <span className="text-sm text-red-400">Less: Total Expenses (auto)</span>
-                                    <span className="text-red-400 font-semibold">({fmtCur(totalMonthExpenses)})</span>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Less: Bank Charges</label>
-                                    <input type="number" step="0.01" value={bankCharges} onChange={e => setBankCharges(e.target.value)} placeholder="0.00" className={inputCls} />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Add: Interest Earned</label>
-                                    <input type="number" step="0.01" value={interestEarned} onChange={e => setInterestEarned(e.target.value)} placeholder="0.00" className={inputCls} />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Other Adjustments (+/-)</label>
-                                    <input type="number" step="0.01" value={otherAdjustments} onChange={e => setOtherAdjustments(e.target.value)} placeholder="0.00" className={inputCls} />
-                                </div>
-                                <div className="pt-3 border-t-2 border-blue-500">
-                                    <div className="flex justify-between items-center p-3 bg-blue-500/20 rounded-lg">
-                                        <span className="text-blue-400 font-semibold">Adjusted Book Balance</span>
-                                        <span className="text-xl font-bold text-blue-400">{fmtCur(bookBalance)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Bank Balance Side */}
-                        <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
-                            <h3 className="text-lg font-semibold text-amber-400 mb-4 text-center border-b border-slate-700 pb-2">BANK BALANCE</h3>
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-xs text-slate-400 block mb-1">Bank Statement Balance</label>
-                                    <input type="number" step="0.01" value={bankStatementBalance} onChange={e => setBankStatementBalance(e.target.value)} placeholder="Enter balance from bank statement" className={inputCls} />
-                                </div>
                                 <div className="border-t border-slate-700 pt-3">
-                                    <p className="text-xs text-blue-400 font-semibold mb-2">Add: Deposits in Transit</p>
-                                    {depositsInTransit.length > 0 ? depositsInTransit.map(d => (
-                                        <div key={d.id} className="flex justify-between items-center py-1 px-2 text-sm">
-                                            <span className="text-slate-400">{d.date} - {d.description || 'Deposit'}</span>
-                                            <span className="text-blue-400">{fmtCur(d.amount)}</span>
-                                        </div>
-                                    )) : <p className="text-slate-500 text-xs px-2">None</p>}
+                                    <p className="text-xs text-blue-400 font-semibold mb-1">Add: Deposits in transit</p>
+                                    <p className="text-xs text-slate-500 mb-2">Tick any collection NOT yet on this month's bank statement.</p>
+                                    {rec.collections.length === 0 && <p className="text-slate-500 text-xs px-2">No collections this month</p>}
+                                    {rec.collections.map(c => (
+                                        <label key={c.date} className="flex justify-between items-center py-1 px-2 text-sm cursor-pointer hover:bg-slate-700/30 rounded">
+                                            <span className="flex items-center gap-2 text-slate-300">
+                                                <input type="checkbox" checked={form.deposits_in_transit.includes(c.date)} onChange={() => toggleDit(c.date)} className="w-4 h-4 accent-blue-500" />
+                                                {c.date} Sabbath collection
+                                            </span>
+                                            <span className="text-blue-400">{fmtCur(c.total)}</span>
+                                        </label>
+                                    ))}
+                                    <div className="flex justify-between items-center gap-2 py-1 px-2 text-sm">
+                                        <span className="text-slate-400">Other receipts not yet credited (amount)</span>
+                                        <input type="number" step="0.01" value={form.dit_other} onChange={e => setForm(f => ({ ...f, dit_other: e.target.value }))} placeholder="0.00" className="w-32 px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-right text-sm" />
+                                    </div>
                                     <div className="flex justify-between items-center py-1 px-2 text-sm font-semibold border-t border-slate-700 mt-1">
-                                        <span className="text-blue-400">Total</span>
-                                        <span className="text-blue-400">{fmtCur(totalDepositsInTransit)}</span>
+                                        <span className="text-blue-400">Total deposits in transit</span>
+                                        <span className="text-blue-400">{fmtCur(rec.ditTotal)}</span>
                                     </div>
                                 </div>
+
                                 <div className="border-t border-slate-700 pt-3">
-                                    <p className="text-xs text-amber-400 font-semibold mb-2">Less: Outstanding Cheques (Uncashed)</p>
-                                    {uncashedCheques.length > 0 ? uncashedCheques.map(e => {
-                                        const payee = e.description?.includes(' - ') ? e.description.split(' - ')[0].trim() : (e.description || '');
-                                        return (
+                                    <p className="text-xs text-amber-400 font-semibold mb-2">Less: Outstanding cheques at month end</p>
+                                    <div className="max-h-72 overflow-y-auto">
+                                        {rec.outstanding.length === 0 && <p className="text-slate-500 text-xs px-2">None</p>}
+                                        {rec.outstanding.map(e => (
                                             <div key={e.id} className="flex justify-between items-center py-1 px-2 text-sm">
-                                                <span className="text-slate-400">Chq#{e.cheque_number} - {payee}</span>
+                                                <span className="text-slate-400">#{e.cheque_number} · {e.date} · {brPayee(e)}{e.cleared_month ? <span className="text-slate-500"> (cleared {brMonthLabel(e.cleared_month)})</span> : null}</span>
                                                 <span className="text-amber-400">({fmtCur(e.amount)})</span>
                                             </div>
-                                        );
-                                    }) : <p className="text-slate-500 text-xs px-2">None</p>}
+                                        ))}
+                                    </div>
+                                    <div className="flex justify-between items-center gap-2 py-1 px-2 text-sm">
+                                        <span className="text-slate-400">Prior-year / other cheques not in the app (amount)</span>
+                                        <input type="number" step="0.01" value={form.os_other} onChange={e => setForm(f => ({ ...f, os_other: e.target.value }))} placeholder="0.00" className="w-32 px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-right text-sm" />
+                                    </div>
                                     <div className="flex justify-between items-center py-1 px-2 text-sm font-semibold border-t border-slate-700 mt-1">
-                                        <span className="text-amber-400">Total</span>
-                                        <span className="text-amber-400">({fmtCur(totalUncashed)})</span>
+                                        <span className="text-amber-400">Total outstanding cheques</span>
+                                        <span className="text-amber-400">({fmtCur(rec.outstandingTotal)})</span>
                                     </div>
                                 </div>
-                                <div className="pt-3 border-t-2 border-amber-500">
-                                    <div className="flex justify-between items-center p-3 bg-amber-500/20 rounded-lg">
-                                        <span className="text-amber-400 font-semibold">Adjusted Bank Balance</span>
-                                        <span className="text-xl font-bold text-amber-400">{fmtCur(adjustedBankBalance)}</span>
+
+                                <div className="border-t border-slate-700 pt-3">
+                                    <p className="text-xs text-amber-400 font-semibold mb-1">Less: Conference remittances not yet paid at month end</p>
+                                    <div className="flex flex-wrap justify-between items-center gap-2 py-1 px-2 text-xs text-slate-400">
+                                        <span>{BR_MONTHS[parseInt(selectedMonth.split('-')[1]) - 1]}'s remittance cleared the bank in:</span>
+                                        <input type="month" value={form.conference_cleared_month} onChange={e => setForm(f => ({ ...f, conference_cleared_month: e.target.value }))} className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-white text-xs" />
                                     </div>
+                                    {rec.confOutstanding.length === 0 && <p className="text-slate-500 text-xs px-2">None</p>}
+                                    {rec.confOutstanding.map(c => (
+                                        <div key={c.ym} className="flex justify-between items-center py-1 px-2 text-sm">
+                                            <span className="text-slate-400">{brMonthLabel(c.ym)} remittance</span>
+                                            <span className="text-amber-400">({fmtCur(c.amount)})</span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between items-center py-1 px-2 text-sm font-semibold border-t border-slate-700 mt-1">
+                                        <span className="text-amber-400">Total Conference outstanding</span>
+                                        <span className="text-amber-400">({fmtCur(rec.confOutstandingTotal)})</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-center p-3 bg-amber-500/20 rounded-lg">
+                                    <span className="text-amber-400 font-semibold">Adjusted bank balance</span>
+                                    <span className="text-xl font-bold text-amber-400">{fmtCur(rec.adjustedBank)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Book side */}
+                        <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4">
+                            <h3 className="text-base font-semibold text-blue-400 mb-4 text-center border-b border-slate-700 pb-2">BOOK SIDE</h3>
+                            <div className="space-y-2 text-sm">
+                                <p className="text-xs text-slate-500">Cash book movement (same as the Financial Statement)</p>
+                                <div className="flex justify-between px-2"><span className="text-slate-400">Opening balance</span><span className="text-white">{fmtCur(rec.opening)}</span></div>
+                                <div className="flex justify-between px-2"><span className="text-slate-400">Add: Deposits</span><span className="text-emerald-400">+{fmtCur(rec.deposits)}</span></div>
+                                <div className="flex justify-between px-2"><span className="text-slate-400">Less: Conference remittance</span><span className="text-red-400">-{fmtCur(rec.conference)}</span></div>
+                                <div className="flex justify-between px-2"><span className="text-slate-400">Less: Expenses (incl. Church Project)</span><span className="text-red-400">-{fmtCur(rec.expTotal)}</span></div>
+                                <div className="flex justify-between p-2 bg-blue-500/10 rounded font-semibold"><span className="text-blue-400">Balance per cash book</span><span className="text-blue-400">{fmtCur(rec.closing)}</span></div>
+
+                                <div className="pt-3 border-t border-slate-700 space-y-3">
+                                    <p className="text-xs text-slate-500">Items on the bank statement not yet entered in the app</p>
+                                    <div>
+                                        <label className="text-xs text-slate-400 block mb-1">Less: Bank charges not yet recorded</label>
+                                        <input type="number" step="0.01" value={form.bank_charges} onChange={e => setForm(f => ({ ...f, bank_charges: e.target.value }))} placeholder="0.00" className={inputCls} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 block mb-1">Add: Interest not yet recorded</label>
+                                        <input type="number" step="0.01" value={form.interest} onChange={e => setForm(f => ({ ...f, interest: e.target.value }))} placeholder="0.00" className={inputCls} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 block mb-1">Other adjustments (+/−)</label>
+                                        <input type="number" step="0.01" value={form.other_adj} onChange={e => setForm(f => ({ ...f, other_adj: e.target.value }))} placeholder="0.00" className={inputCls} />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 block mb-1">Notes (shown on the export)</label>
+                                        <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows="2" className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm" placeholder="e.g. explanation of any adjustment" />
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-center p-3 bg-blue-500/20 rounded-lg mt-2">
+                                    <span className="text-blue-400 font-semibold">Adjusted book balance</span>
+                                    <span className="text-xl font-bold text-blue-400">{fmtCur(rec.adjustedBook)}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Difference / Status */}
-                    <div className={`p-4 rounded-xl border ${Math.abs(difference) < 0.01 ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-red-500/20 border-red-500/30'}`}>
+                    {/* Status */}
+                    <div className={`p-4 rounded-xl border ${!rec.hasStmt ? 'bg-slate-800/50 border-slate-700' : statusOk ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-red-500/20 border-red-500/30'}`}>
                         <div className="flex justify-between items-center">
-                            <span className={`text-lg font-semibold ${Math.abs(difference) < 0.01 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {Math.abs(difference) < 0.01 ? '✓ RECONCILED' : '⚠ DIFFERENCE'}
+                            <span className={`text-lg font-semibold ${!rec.hasStmt ? 'text-slate-400' : statusOk ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {!rec.hasStmt ? 'Enter the bank statement balance' : statusOk ? '✓ RECONCILED' : '⚠ DIFFERENCE'}
                             </span>
-                            <span className={`text-2xl font-bold ${Math.abs(difference) < 0.01 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtCur(difference)}</span>
+                            {rec.hasStmt && <span className={`text-2xl font-bold ${statusOk ? 'text-emerald-400' : 'text-red-400'}`}>{fmtCur(rec.difference)}</span>}
                         </div>
-                        {Math.abs(difference) >= 0.01 && (
-                            <p className="text-slate-400 text-xs mt-2">Check that all deposits and expenses are entered, and cheque statuses (Cashed/Uncashed) are up to date.</p>
+                        {rec.hasStmt && !statusOk && (
+                            <p className="text-slate-400 text-xs mt-2">Check deposits in transit, cleared months on cheques, and any bank charges or interest not yet entered.</p>
                         )}
                     </div>
                 </div>
@@ -5686,6 +5943,7 @@
 
             // Calculate totals for filtered data (Church Project tracked separately)
             const filteredTotals = calculateTitheTotals(filteredTithes, filteredExpenses);
+            filteredTotals.grandTotalConference = (filteredTotals.grandTotalConference || 0) + sumConfAdj(String(startDate).slice(0, 7), String(endDate).slice(0, 7));
             const filteredRegularExpenses = filteredExpenses.filter(e => !isChurchProjectExpense(e));
             const filteredChurchProjectTotal = filteredExpenses.filter(isChurchProjectExpense).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const filteredExpenseTotal = filteredRegularExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
@@ -5834,7 +6092,7 @@
                     const lessWesportRow = ['', '', '  Less: School - Wesport (Expenses)', '', '', '', '', '', '', '', -(filteredTotals.wesportExpenses || 0), '', '', '', '', '', '', '', '', '', '', ''];
                     const netAmountRow = ['', '', '  Net Amount for 40%/60%', '', '', '', '', '', '', '', filteredTotals.baseFor40_60 || 0, '', '', '', '', '', '', '', '', '', '', ''];
                     const percentage40Row = ['', '', '40% of Net Amount (to Conference)', '', '', '', '', '', '', percentage40, '', '', '', '', '', '', '', '', '', '', '', ''];
-                    const percentage60Row = ['', '', '60% Church Operating Income', '', '', '', '', '', '', '', filteredTotals.churchOperating, '', '', '', '', '', '', '', '', '', '', ''];
+                    const percentage60Row = ['', '', '60% Church Operating Income', '', '', '', '', '', '', '', filteredTotals.budgetCovenant60, '', '', '', '', '', '', '', '', '', '', ''];
                     const grandTotalRow = ['', '', 'Grand Total To Conference Treasurer', '', '', '', '', '', '', grandTotalConference, '', '', '', '', '', '', '', '', '', '', '', ''];
                     
                     const ws = XLSX.utils.aoa_to_sheet([
@@ -7460,7 +7718,10 @@
             const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0);
             totals.baseFor40_60 = baseFor40_60;
             totals.percentage40 = baseFor40_60 * 0.4;
+            // Church Operating Income (Statement) = Total Church Funds - 40% to Conference
             totals.churchOperating = totals.totalChurchFund - totals.percentage40;
+            // Budget Covenant 60% (Treasurer Book 40% breakdown only) = Budget Covenant - 40%
+            totals.budgetCovenant60 = (totals.budget_covenant || 0) - totals.percentage40;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;
             return totals;
         }

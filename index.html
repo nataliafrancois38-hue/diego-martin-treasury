@@ -112,6 +112,9 @@
             { key: 'camp', label: 'Camp' },
         ];
 
+        // Club and fund receipts held in their own funds (shown under Distribution of Funds), not church operating income
+        const RESTRICTED_FUND_KEYS = ['adventurer', 'pathfinder', 'ay', 'funeral', 'camp'];
+
         const DEFAULT_EXPENSE_CATEGORIES = [
             'Administration', 'Adventurer Club', 'Anniversary', 'AY',
             'Board Expenses', 'Camp', 'Children\'s Ministry', 'Choir', 'Church Building', 'Church Building Aircondition',
@@ -275,6 +278,18 @@
                 if (nameLower.includes(keyword)) return fieldKey;
             }
             return null;
+        }
+
+        // Does an expense come out of this fund/project?
+        // 1) expense explicitly linked to the project (Fund type), or
+        // 2) Department-type expense whose department is tied to a fund (only Community Services → Community Services fund)
+        const FUND_DEPARTMENTS = [{ projectKeyword: 'community service', department: 'Community Services' }];
+        function expenseInProject(e, project) {
+            if (!e || !project) return false;
+            if (e.project_id) return e.project_id === project.id;
+            const pname = (project.name || '').toLowerCase();
+            const dept = (e.department || e.category || '').trim();
+            return FUND_DEPARTMENTS.some(m => pname.includes(m.projectKeyword) && dept === m.department);
         }
 
         // Main App
@@ -2479,7 +2494,7 @@
             const confFundPayment = thisMonthTotals.grandTotalConference;
             // Church Project cheques come out of the same chequing account, so they reduce the balance
             const endBalance = parseFloat(prevBalance) + depositTotal - confFundPayment - thisMonthExpenseTotal - monthChurchProjectTotal;
-            const increaseDecrease = thisMonthTotals.churchOperating - thisMonthExpenseTotal - monthChurchProjectTotal;
+            const increaseDecrease = thisMonthTotals.churchCashIncome - thisMonthExpenseTotal - monthChurchProjectTotal;
 
             // Parse month properly to avoid timezone issues (selectedYear and selectedMonth already declared above)
             const monthName = new Date(selectedYear, selectedMonth - 1, 15).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -2527,7 +2542,7 @@
                         } catch (e) { }
                     }
                 });
-                const spent = expenses.filter(e => e.project_id === project.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                const spent = expenses.filter(e => expenseInProject(e, project)).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                 return openingBalance + income - spent;
             };
 
@@ -2591,13 +2606,13 @@
                             } catch (e) { }
                         }
                     });
-                    const spent = expensesUpToMonth.filter(e => e.project_id === p.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                    const spent = expensesUpToMonth.filter(e => expenseInProject(e, p)).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                     return { name: p.name, balance: openingBalance + income - spent };
                 });
                 const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
                 const churchOperatingIncome = allTimeTotals.churchOperating || 0;
                 // Chequing balance = Reconciliation "Balance as at" = prevBalance + churchOperating - expenses
-                const chequingBalance = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal - monthChurchProjectTotal;
+                const chequingBalance = parseFloat(prevBalance) + (thisMonthTotals.churchCashIncome || 0) - thisMonthExpenseTotal - monthChurchProjectTotal;
                 const representedByTotal = parseFloat(unitTrust) + chequingBalance + parseFloat(revolvingFund);
                 const churchReserve = representedByTotal - totalProjectFunds - churchOperatingIncome;
                 
@@ -2729,7 +2744,7 @@
                     ['Church Project', tmTotals.government_fund || 0, pmTotals.government_fund || 0],
                     ['Messages of Hope Radio', tmTotals.messages_of_hope || 0, pmTotals.messages_of_hope || 0],
                     ['Funeral Fund', tmTotals.funeral || 0, pmTotals.funeral || 0],
-                    ['Ministry Fund', 0, 0],
+                    ['Adventurer, Pathfinder & AY', (tmTotals.adventurer || 0) + (tmTotals.pathfinder || 0) + (tmTotals.ay || 0), (pmTotals.adventurer || 0) + (pmTotals.pathfinder || 0) + (pmTotals.ay || 0)],
                     ['Camp', tmTotals.camp || 0, pmTotals.camp || 0],
                     ['Refunds', tmTotals.books || 0, pmTotals.books || 0],
                 ];
@@ -2753,13 +2768,17 @@
                 setCell('C35', -Math.abs(pm40Percent), acctFmt);
                 setFormula('D35', 'B35+C35', acctFmt);
 
-                // Row 36: TOTAL CHURCH OPERATING INCOME (formula: =B34+B35)
-                setCell('A36', 'TOTAL CHURCH OPERATING INCOME');
-                setFormula('B36', 'B34+B35', acctFmt);
-                setCell('C36', pmChurchOperating, acctFmt);
+                // Row 36: Club & fund receipts go to their own funds (Funeral row 30, Adventurer/Pathfinder/AY row 31, Camp row 32)
+                setCell('A36', 'Less Club & Fund receipts (to Distribution of Funds)');
+                setFormula('B36', '-(B30+B31+B32)', acctFmt);
+                setCell('C36', -(pmTotals.fundReceipts || 0), acctFmt);
                 setFormula('D36', 'B36+C36', acctFmt);
-                
-                // Row 37: empty
+
+                // Row 37: TOTAL CHURCH OPERATING INCOME (formula: =B34+B35+B36)
+                setCell('A37', 'TOTAL CHURCH OPERATING INCOME');
+                setFormula('B37', 'B34+B35+B36', acctFmt);
+                setCell('C37', pmChurchOperating, acctFmt);
+                setFormula('D37', 'B37+C37', acctFmt);
                 
                 // Row 38: EXPENDITURE header
                 setCell('A38', 'EXPENDITURE');
@@ -2806,7 +2825,7 @@
                 // Balance as at (formula includes church project deduction)
                 const reconBal = reconPrev + 1;
                 setCell(`A${reconBal}`, `Balance as at: ${monthEndDate}`);
-                setFormula(`B${reconBal}`, `B${reconPrev}+B36-B${totalExpRow}-B${cpRow}`, acctFmt);
+                setFormula(`B${reconBal}`, `B${reconPrev}+B34+B35-B${totalExpRow}-B${cpRow}`, acctFmt);
                 
                 // Increase/Decrease (formula: =Bbal-Bprev)
                 const reconInc = reconBal + 1;
@@ -2838,7 +2857,7 @@
                 // Church Operating Income (formula: =B36)
                 const coiRow = r;
                 setCell(`A${r}`, 'Church Operating Income (60%)');
-                setFormula(`B${r}`, 'B36', acctFmt);
+                setFormula(`B${r}`, 'B37', acctFmt);
                 setCell(`C${r}`, 'Unit Trust');
                 setCell(`D${r}`, parseFloat(unitTrust), acctFmt);
                 r++;
@@ -2899,6 +2918,7 @@
                 const pm40Pct=Math.abs(pmTotals.percentage40||0);
                 const pmTotalConf=pmSubTotalConf+pm40Pct+(pmTotals.conferenceAdjustment||0);
                 const pmChurchOp=pmTotals.churchOperating||0;
+                const tmFund=tmTotals.fundReceipts||0, pmFund=pmTotals.fundReceipts||0;
                 const pmTotalChurchIncome=pmTotals.totalChurchFund||0;
                 // Totals (YTD)
                 const ytdSubTotalConf=tmSubTotalConf+pmSubTotalConf;
@@ -2907,14 +2927,14 @@
                 const ytdChurchOp=tmChurchOp+pmChurchOp;
                 const ytdTotalChurchIncome=tmTotalChurchIncome+pmTotalChurchIncome;
                 
-                const reconBalance=parseFloat(prevBalance)+tmChurchOp-thisMonthExpenseTotal-monthChurchProjectTotal;
-                const increaseDecrease=tmChurchOp-thisMonthExpenseTotal-monthChurchProjectTotal;
+                const reconBalance=parseFloat(prevBalance)+tmChurchOp+tmFund-thisMonthExpenseTotal-monthChurchProjectTotal;
+                const increaseDecrease=tmChurchOp+tmFund-thisMonthExpenseTotal-monthChurchProjectTotal;
                 const netPosition=increaseDecrease;
                 // Distribution data - filtered up to selected month
                 const allPrj=projects||[];
                 const entriesUpToMonth=titheEntries.filter(e=>e.date<=monthEnd);
                 const expensesUpToMonth=expenses.filter(e=>e.date<=monthEnd);
-                const pptPF=allPrj.map(p=>{const ob=parseFloat(p.opening_balance)||0;let inc=0;const lf=getProjectLinkedField(p);entriesUpToMonth.forEach(t=>{const hpid=t.project_id===p.id;if(hpid)inc+=(parseFloat(t.project)||0)+(parseFloat(t.government_fund)||0);if(lf&&t[lf]&&!(hpid&&(lf==='project'||lf==='government_fund')))inc+=parseFloat(t[lf])||0;if(t.project_links){try{const lk=typeof t.project_links==='string'?JSON.parse(t.project_links):t.project_links;Object.entries(lk).forEach(([fk,pid])=>{if(fk===lf)return;if(pid===p.id)inc+=parseFloat(t[fk])||0;});}catch(e){}}});const sp=expensesUpToMonth.filter(e=>e.project_id===p.id).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{name:p.name,balance:ob+inc-sp};});
+                const pptPF=allPrj.map(p=>{const ob=parseFloat(p.opening_balance)||0;let inc=0;const lf=getProjectLinkedField(p);entriesUpToMonth.forEach(t=>{const hpid=t.project_id===p.id;if(hpid)inc+=(parseFloat(t.project)||0)+(parseFloat(t.government_fund)||0);if(lf&&t[lf]&&!(hpid&&(lf==='project'||lf==='government_fund')))inc+=parseFloat(t[lf])||0;if(t.project_links){try{const lk=typeof t.project_links==='string'?JSON.parse(t.project_links):t.project_links;Object.entries(lk).forEach(([fk,pid])=>{if(fk===lf)return;if(pid===p.id)inc+=parseFloat(t[fk])||0;});}catch(e){}}});const sp=expensesUpToMonth.filter(e=>expenseInProject(e,p)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);return{name:p.name,balance:ob+inc-sp};});
                 const totPF=pptPF.reduce((s,p)=>s+p.balance,0);
                 const pCOA=tmChurchOp; // This month's church operating for distribution
                 const pCheq=reconBalance,pUT=parseFloat(unitTrust),pRF=parseFloat(revolvingFund);
@@ -2976,11 +2996,12 @@
                 const churchSlipItems=CHURCH_FIELDS.map(f=>[f.label,tmTotals[f.key]||0,pmTotals[f.key]||0]).filter(r=>r[1]>0||r[2]>0);
                 churchSlipItems.push(['TOTAL CHURCH INCOME',tmTotalChurchIncome,pmTotalChurchIncome]);
                 churchSlipItems.push(['Less 40% to Conference',-tm40Pct,-pm40Pct]);
+                churchSlipItems.push(['Less Club & Fund receipts (to funds)',-tmFund,-pmFund]);
                 churchSlipItems.push(['CHURCH OPERATING INCOME',tmChurchOp,pmChurchOp]);
                 const ciRH=Math.min(0.38,4.0/churchSlipItems.length);let ciY=1.4;
                 churchSlipItems.forEach((item,i)=>{
-                    const isTotal=i>=churchSlipItems.length-3,bg=isTotal?'1A2332':darkSlate;
-                    const clr=i===churchSlipItems.length-1?green:i===churchSlipItems.length-2?red:isTotal?gold:white;
+                    const isTotal=i>=churchSlipItems.length-4,bg=isTotal?'1A2332':darkSlate;
+                    const clr=i===churchSlipItems.length-1?green:(i===churchSlipItems.length-2||i===churchSlipItems.length-3)?red:isTotal?gold:white;
                     slide.addShape(pres.shapes.RECTANGLE,{x:0.5,y:ciY,w:9.2,h:ciRH,fill:{color:bg}});
                     slide.addText(item[0],{x:0.7,y:ciY,w:3.6,h:ciRH,fontSize:14,color:clr,bold:isTotal,valign:'middle'});
                     slide.addText(item[1]<0?'('+fmtC(item[1])+')':fmtC(item[1]),{x:4.5,y:ciY,w:1.8,h:ciRH,fontSize:13,color:clr,align:'right',valign:'middle'});
@@ -3040,7 +3061,7 @@
                 slide.addText('Chequing Account Balance',{x:1.5,y:1.35,w:7,h:0.55,fontSize:20,color:slate,align:'center'});
                 slide.addText(fmtC(reconBalance),{x:1.5,y:1.9,w:7,h:1.1,fontSize:52,fontFace:'Georgia',color:gold,bold:true,align:'center'});
                 slide.addText('as at '+monthEndDate,{x:1.5,y:3.0,w:7,h:0.45,fontSize:18,color:slate,align:'center'});
-                [['Balance From Previous Month',fmtC(parseFloat(prevBalance)),ice],['Church Operating Income','+ '+fmtC(tmChurchOp),green],['Total Expenses','- '+fmtC(thisMonthExpenseTotal),red],['Church Project (Separate)','- '+fmtC(monthChurchProjectTotal),red],['Increase/Decrease',(increaseDecrease>=0?'+':'-')+' '+fmtC(increaseDecrease),increaseDecrease>=0?green:red]].forEach((item,i)=>{
+                [['Balance From Previous Month',fmtC(parseFloat(prevBalance)),ice],['Church Operating + Fund Receipts','+ '+fmtC(tmChurchOp+tmFund),green],['Total Expenses','- '+fmtC(thisMonthExpenseTotal),red],['Church Project (Separate)','- '+fmtC(monthChurchProjectTotal),red],['Increase/Decrease',(increaseDecrease>=0?'+':'-')+' '+fmtC(increaseDecrease),increaseDecrease>=0?green:red]].forEach((item,i)=>{
                     const y=3.9+(i*0.42),last=i===3;
                     slide.addShape(pres.shapes.RECTANGLE,{x:1.8,y:y,w:6.4,h:0.4,fill:{color:last?'1A2332':darkSlate}});
                     slide.addText(item[0],{x:2.0,y:y,w:3.5,h:0.4,fontSize:18,color:last?gold:white,bold:last,valign:'middle'});
@@ -3207,6 +3228,7 @@
                                             </tr>
                                         ))}
                                         <tr className="font-bold border-t border-slate-600"><td className="text-slate-300 py-1">TOTAL CHURCH INCOME</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.totalChurchFund)}</td><td className="text-right text-slate-300">{fmtCur(allTimeTotals.totalChurchFund)}</td></tr>                                        <tr><td className="text-red-400 py-1">Less 40% to Local Conference</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.percentage40)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.percentage40)}</td></tr>
+                                        <tr><td className="text-red-400 py-1">Less Club &amp; Fund receipts (to Distribution of Funds)</td><td className="text-right text-red-400">-{fmtCur(thisMonthTotals.fundReceipts || 0)}</td><td className="text-right text-red-300">-{fmtCur(allTimeTotals.fundReceipts || 0)}</td></tr>
                                         <tr className="font-bold bg-blue-500/10"><td className="text-blue-400 py-2">TOTAL CHURCH OPERATING INCOME (60%)</td><td className="text-right text-blue-400">{fmtCur(thisMonthTotals.churchOperating)}</td><td className="text-right text-blue-300">{fmtCur(allTimeTotals.churchOperating)}</td></tr>
                                     </tbody>
                                 </table>
@@ -3364,7 +3386,7 @@
                                     } catch (e) {}
                                 }
                             });
-                            const sp = expensesUpToMonth.filter(e => e.project_id === p.id).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                            const sp = expensesUpToMonth.filter(e => expenseInProject(e, p)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                             return { name: p.name, balance: ob + inc - sp };
                         });
                         const stmtTotalProjectFunds = stmtProjectFunds.reduce((s, p) => s + p.balance, 0);
@@ -3372,7 +3394,7 @@
                         const stmtTotalAllocated = stmtTotalProjectFunds + stmtChurchOp;
                         const stmtUT = parseFloat(unitTrust) || 0;
                         const stmtRF = parseFloat(revolvingFund) || 0;
-                        const stmtCheq = parseFloat(prevBalance) + (thisMonthTotals.churchOperating || 0) - thisMonthExpenseTotal - monthChurchProjectTotal;
+                        const stmtCheq = parseFloat(prevBalance) + (thisMonthTotals.churchCashIncome || 0) - thisMonthExpenseTotal - monthChurchProjectTotal;
                         const stmtRepTotal = stmtUT + stmtCheq + stmtRF;
                         const stmtReserves = stmtRepTotal - stmtTotalAllocated;
                         
@@ -4143,7 +4165,7 @@
                 });
                 
                 const spent = expenses
-                    .filter(e => e.project_id === projectId)
+                    .filter(e => expenseInProject(e, project))
                     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                 const totalIncome = openingBalance + income;
                 return { openingBalance, income, totalIncome, spent, balance: totalIncome - spent };
@@ -4174,7 +4196,7 @@
                 try {
                     const financials = getProjectFinancials(project.id);
                     const projectTithes = getProjectTithes(project.id);
-                    const projectExpenses = expenses.filter(e => e.project_id === project.id);
+                    const projectExpenses = expenses.filter(e => expenseInProject(e, project));
                     
                     const data = [
                         ['PROJECT REPORT'],
@@ -4455,6 +4477,7 @@
             const thisYearChildrensHome = getMonthlyData(titheEntries, currentYear, 'pos_band');
             // Sum all church fund fields per month
             CHURCH_FIELDS.forEach(f => {
+                if (RESTRICTED_FUND_KEYS.includes(f.key)) return; // club & fund receipts are not operating income
                 const monthlyField = getMonthlyData(titheEntries, currentYear, f.key);
                 monthlyField.forEach((v, i) => thisYearTotalChurchFund[i] += v);
             });
@@ -6266,7 +6289,7 @@
                 });
                 
                 const spent = expenses
-                    .filter(e => e.project_id === projectId)
+                    .filter(e => expenseInProject(e, project))
                     .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                 const totalIncome = openingBalance + income;
                 return { openingBalance, income, totalIncome, spent, balance: totalIncome - spent };
@@ -6330,7 +6353,7 @@
                     allProjects.forEach(project => {
                         const financials = getProjectFinancials(project.id);
                         const projectTithes = getProjectTithes(project.id);
-                        const projectExpenses = expenses.filter(e => e.project_id === project.id);
+                        const projectExpenses = expenses.filter(e => expenseInProject(e, project));
                         
                         // Calculate amount for each tithe entry linked to this project
                         const getTitheAmount = (t) => {
@@ -7033,7 +7056,7 @@
                                     } catch (e) { }
                                 }
                             });
-                            const spent = expensesUpTo.filter(e => e.project_id === p.id).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+                            const spent = expensesUpTo.filter(e => expenseInProject(e, p)).reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
                             return { name: p.name, status: p.status, balance: openingBalance + income - spent };
                         });
                         const totalProjectFunds = projectFunds.reduce((s, p) => s + p.balance, 0);
@@ -7052,7 +7075,7 @@
                         // Calculate Chequing Account Balance using filtered data
                         const stmtPrevBalance = parseFloat(settings.previous_balance) || 0;
                         const filteredUpToExpenseTotal = expensesUpTo.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-                        const chequingBalance = stmtPrevBalance + (filteredUpToTotals.churchOperating || 0) - filteredUpToExpenseTotal;
+                        const chequingBalance = stmtPrevBalance + (filteredUpToTotals.churchCashIncome || 0) - filteredUpToExpenseTotal;
                         
                         // Total "Represented by" = Unit Trust + Chequing + Revolving Fund
                         const representedByTotal = unitTrustBalance + chequingBalance + revolvingFundBalance;
@@ -7718,8 +7741,12 @@
             const baseFor40_60 = (totals.budget_covenant || 0) - totalSchoolDeduction - (totals.pos_band || 0);
             totals.baseFor40_60 = baseFor40_60;
             totals.percentage40 = baseFor40_60 * 0.4;
-            // Church Operating Income (Statement) = Total Church Funds - 40% to Conference
-            totals.churchOperating = totals.totalChurchFund - totals.percentage40;
+            // Club & fund receipts (Adventurer, Pathfinder, AY, Funeral, Camp) stay in their own funds
+            totals.fundReceipts = RESTRICTED_FUND_KEYS.reduce((s, k) => s + (totals[k] || 0), 0);
+            // Church Operating Income (Statement) = Total Church Funds - Club & fund receipts - 40% to Conference
+            totals.churchOperating = totals.totalChurchFund - totals.fundReceipts - totals.percentage40;
+            // Cash into chequing from church funds (operating income + fund receipts) - used for the balance chain
+            totals.churchCashIncome = totals.totalChurchFund - totals.percentage40;
             // Budget Covenant 60% (Treasurer Book 40% breakdown only) = Budget Covenant - 40%
             totals.budgetCovenant60 = (totals.budget_covenant || 0) - totals.percentage40;
             totals.grandTotalConference = totals.totalConfFund + totals.percentage40;
